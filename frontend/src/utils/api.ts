@@ -4,11 +4,11 @@ export const getApiBaseUrl = () => {
     return configuredUrl.replace(/\/$/, "");
   }
 
-  const { protocol, hostname } = window.location;
+  const { hostname, origin } = window.location;
 
   if (hostname === "localhost" || hostname === "127.0.0.1") {
-    return "http://localhost:5000";
+    return "http://13.206.187.66:5001";
   }
 
-  return `${protocol}//${hostname}`;
+  return origin;
 };
