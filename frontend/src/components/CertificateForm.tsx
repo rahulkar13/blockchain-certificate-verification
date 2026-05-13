@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,59 +10,140 @@ import {
   CardDescription,
   CardContent,
 } from "@/components/ui/card";
-
 import { Calendar } from "@/components/ui/calendar";
-import { CalendarIcon, FileText } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  CalendarIcon,
+  Eye,
+  FileText,
+} from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { toast } from "@/hooks/use-toast";
+import { normalizeCertificateTemplate } from "@/utils/adminSettings";
 
-export default function CertificateForm({ onSubmit, isLoading }: any) {
+type CertificateDraft = {
+  studentName?: string;
+  studentEmail?: string;
+  courseName?: string;
+  issueDate?: string | Date;
+  expiryDate?: string | Date;
+  additionalInfo?: string;
+  template?: string;
+};
+
+type CertificateFormProps = {
+  onSubmit: (data: Record<string, unknown>) => void;
+  onPreview?: (data: Record<string, unknown>) => void;
+  isLoading: boolean;
+  draftData?: CertificateDraft | null;
+  defaultTemplate?: string;
+};
+
+export default function CertificateForm({
+  onSubmit,
+  onPreview,
+  isLoading,
+  draftData,
+  defaultTemplate = "completion",
+}: CertificateFormProps) {
   const [studentName, setStudentName] = useState("");
+  const [studentEmail, setStudentEmail] = useState("");
   const [courseName, setCourseName] = useState("");
   const [issueDate, setIssueDate] = useState<Date | null>(null);
+  const [expiryDate, setExpiryDate] = useState<Date | null>(null);
   const [additionalInfo, setAdditionalInfo] = useState("");
-
+  const [template, setTemplate] = useState(normalizeCertificateTemplate(defaultTemplate));
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [isExpiryCalendarOpen, setIsExpiryCalendarOpen] = useState(false);
 
-  const submitForm = (e: any) => {
-    e.preventDefault();
+  useEffect(() => {
+    if (!draftData) return;
+
+    setStudentName(draftData.studentName || "");
+    setStudentEmail(draftData.studentEmail || "");
+    setCourseName(draftData.courseName || "");
+    setIssueDate(draftData.issueDate ? new Date(draftData.issueDate) : null);
+    setExpiryDate(draftData.expiryDate ? new Date(draftData.expiryDate) : null);
+    setAdditionalInfo(draftData.additionalInfo || "");
+    setTemplate(normalizeCertificateTemplate(draftData.template || defaultTemplate));
+  }, [draftData, defaultTemplate]);
+
+  useEffect(() => {
+    if (!draftData) {
+      setTemplate(normalizeCertificateTemplate(defaultTemplate));
+    }
+  }, [defaultTemplate, draftData]);
+
+  const handleEmailChange = (value: string) => {
+    setStudentEmail(value);
+  };
+
+  const collectData = () => ({
+    studentName,
+    studentEmail,
+    courseName,
+    issueDate,
+    expiryDate,
+    additionalInfo,
+    template,
+  });
+
+  const previewCertificate = () => {
     if (!studentName || !courseName || !issueDate) {
-      alert("Please fill all required fields.");
+      toast({
+        title: "Preview details missing",
+        description: "Enter student name, course, and issue date before preview.",
+        variant: "destructive",
+      });
       return;
     }
 
-    onSubmit({
-      studentName,
-      courseName,
-      issueDate,
-      additionalInfo,
-    });
+    onPreview?.(collectData());
+  };
+
+  const submitForm = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!studentName || !studentEmail || !courseName || !issueDate) {
+      toast({
+        title: "Missing details",
+        description: "Please fill all required fields.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    onSubmit(collectData());
   };
 
   return (
-    <Card className="bg-card/50 backdrop-blur-sm border border-border/50 shadow-xl rounded-xl">
+    <Card className="surface-card">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <FileText className="h-5 w-5 text-blockchain-primary" />
-          <span className="text-white">Certificate Information</span>
+          <FileText className="h-5 w-5 text-primary" />
+          <span>Certificate Information</span>
         </CardTitle>
 
-        <CardDescription className="text-muted-foreground">
-          Fill details to issue certificate automatically
+        <CardDescription>
+          Preview the PDF, then issue the certificate.
         </CardDescription>
       </CardHeader>
 
       <CardContent>
         <form onSubmit={submitForm} className="space-y-6">
-
-          {/* Student & Course */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label className="text-white">Student Name *</Label>
+              <Label>Student Name *</Label>
               <Input
                 placeholder="Enter student name"
-                className="bg-background border border-border/40 text-white"
+                className="bg-background/70"
                 value={studentName}
                 onChange={(e) => setStudentName(e.target.value)}
                 required
@@ -70,66 +151,133 @@ export default function CertificateForm({ onSubmit, isLoading }: any) {
             </div>
 
             <div className="space-y-2">
-              <Label className="text-white">Course Name *</Label>
+              <Label>Student Email *</Label>
               <Input
-                placeholder="Enter course name"
-                className="bg-background border border-border/40 text-white"
-                value={courseName}
-                onChange={(e) => setCourseName(e.target.value)}
+                type="email"
+                placeholder="student@example.com"
+                className="bg-background/70"
+                value={studentEmail}
+                onChange={(e) => handleEmailChange(e.target.value)}
                 required
               />
             </div>
           </div>
 
-          {/* Date Picker */}
           <div className="space-y-2">
-            <Label className="text-white">Issue Date *</Label>
-            <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-full justify-start text-left font-normal bg-primary/10 border-primary/30 text-white hover:bg-primary/20 hover:border-primary/50",
-                    !issueDate && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
-                  {issueDate ? format(issueDate, "PPP") : "Pick a date"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={issueDate ?? undefined}
-                  onSelect={(date) => {
-                    setIssueDate(date ?? null);
-                    setIsCalendarOpen(false);
-                  }}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
+            <Label>Certificate Template</Label>
+            <Select value={template} onValueChange={setTemplate}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select template" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="completion">Course Completion</SelectItem>
+                <SelectItem value="internship">Internship</SelectItem>
+                <SelectItem value="participation">Participation</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
-          {/* Additional Info */}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Course Name *</Label>
+              <Input
+                placeholder="Enter course name"
+                className="bg-background/70"
+                value={courseName}
+                onChange={(e) => setCourseName(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Issue Date *</Label>
+              <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start bg-card/80 text-left font-normal",
+                      !issueDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
+                    {issueDate ? format(issueDate, "PPP") : "Pick a date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={issueDate ?? undefined}
+                    onSelect={(date) => {
+                      setIssueDate(date ?? null);
+                      setIsCalendarOpen(false);
+                    }}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Expiry Date</Label>
+              <Popover open={isExpiryCalendarOpen} onOpenChange={setIsExpiryCalendarOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start bg-card/80 text-left font-normal",
+                      !expiryDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
+                    {expiryDate ? format(expiryDate, "PPP") : "No expiry"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={expiryDate ?? undefined}
+                    onSelect={(date) => {
+                      setExpiryDate(date ?? null);
+                      setIsExpiryCalendarOpen(false);
+                    }}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+
           <div className="space-y-2">
-            <Label className="text-white">Additional Information</Label>
+            <Label>Additional Information</Label>
             <Textarea
               placeholder="Optional"
-              className="bg-background border border-border/40 text-white"
+              className="bg-background/70"
               value={additionalInfo}
               onChange={(e) => setAdditionalInfo(e.target.value)}
             />
           </div>
 
-          {/* Submit Button */}
-          <Button
-            type="submit"
-            disabled={isLoading}
-            className="w-full bg-gradient-to-r from-green-500 to-indigo-600 text-white font-semibold"
-          >
-            {isLoading ? "Processing..." : "Issue Certificate"}
-          </Button>
+          <div className="grid gap-3 sm:grid-cols-[0.8fr_1.2fr]">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isLoading}
+              className="gap-2 bg-card/80"
+              onClick={previewCertificate}
+            >
+              <Eye className="h-4 w-4" />
+              Preview PDF
+            </Button>
+            <Button
+              type="submit"
+              disabled={isLoading}
+              className="font-semibold shadow-[var(--glow-primary)]"
+            >
+              {isLoading ? "Processing..." : "Issue Certificate"}
+            </Button>
+          </div>
         </form>
       </CardContent>
     </Card>

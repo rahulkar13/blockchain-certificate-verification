@@ -17,6 +17,10 @@ export const protect = async (req, res, next) => {
       return res.status(401).json({ message: "Unauthorized access" });
     }
 
+    if (admin.status === "suspended") {
+      return res.status(403).json({ message: "This admin account is suspended" });
+    }
+
     req.admin = admin;
     next();
   } catch (error) {
@@ -25,8 +29,15 @@ export const protect = async (req, res, next) => {
 };
 
 export const adminOnly = (req, res, next) => {
-  if (!req.admin) {
+  if (!req.admin || req.admin.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
+  }
+  next();
+};
+
+export const superAdminOnly = (req, res, next) => {
+  if (!req.admin || req.admin.role !== "super_admin") {
+    return res.status(403).json({ message: "Super admin access required" });
   }
   next();
 };

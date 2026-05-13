@@ -1,47 +1,25 @@
-// export default function LoaderOverlay() {
-//   return (
-//     <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-md bg-black/40">
-//       <div
-//         className="w-[320px] p-8 rounded-2xl shadow-xl bg-white/20 backdrop-blur-2xl border border-white/30 animate-fadeIn"
-//         style={{ boxShadow: "0 8px 32px rgba(0,0,0,0.25)" }}
-//       >
-//         {/* Blue Spinner */}
-//         <div className="flex justify-center mb-4">
-//           <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-//         </div>
+type LoaderOverlayProps = {
+  title?: string;
+  description?: string;
+};
 
-//         {/* Creating Text */}
-//         <h2 className="text-center text-black font-semibold text-lg mb-1 animate-pulse">
-//           Creating Certificate...
-//         </h2>
-
-//         <p className="text-center text-black-200 text-sm">
-//           Please wait a few moments...
-//         </p>
-//       </div>
-//     </div>
-//   );
-// }
-
-
-export default function LoaderOverlay() {
+export default function LoaderOverlay({
+  title = "Processing Certificate",
+  description = "Please keep this page open until the transaction finishes.",
+}: LoaderOverlayProps) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-
-      <div className="bg-white rounded-xl shadow-md p-6 border border-gray-200 flex flex-col items-center gap-3">
-
-        {/* Fast spinner */}
-        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-
-        {/* Text */}
-        <p className="text-gray-800 font-semibold text-base">
-          Creating Certificate...
-        </p>
-        <p className="text-gray-500 text-sm -mt-2">
-          Please wait...
-        </p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/75 px-4 backdrop-blur-md">
+      <div className="surface-card flex w-full max-w-sm flex-col items-center rounded-lg p-8 text-center">
+        <div className="relative mb-6 flex h-28 w-28 items-center justify-center">
+          <div className="absolute inset-0 rounded-full border-4 border-primary/15" />
+          <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-primary border-r-accent animate-spin" />
+          <div className="brand-gradient flex h-16 w-16 items-center justify-center rounded-full text-sm font-bold text-white shadow-[var(--glow-primary)]">
+            Wait
+          </div>
+        </div>
+        <p className="text-lg font-semibold text-foreground">{title}</p>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
       </div>
-
     </div>
   );
 }

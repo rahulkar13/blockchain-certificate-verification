@@ -3,37 +3,36 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { GraduationCap, FileCheck, Shield } from "lucide-react";
-import { ThemeToggle } from "@/components/ThemeToggle";
+import { FileCheck, GraduationCap, History, Settings, Shield, Users } from "lucide-react";
 
 const Navbar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
+  const [adminRole, setAdminRole] = useState("admin");
 
   // ✅ Check admin login state
   useEffect(() => {
     const token = localStorage.getItem("adminToken");
     setIsAdminLoggedIn(!!token);
+    try {
+      const savedUser = JSON.parse(localStorage.getItem("adminUser") || "{}");
+      setAdminRole(savedUser.role || "admin");
+    } catch {
+      setAdminRole("admin");
+    }
   }, [location]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("adminToken");
-    localStorage.removeItem("adminUser");
-    setIsAdminLoggedIn(false);
-    navigate("/admin/login");
-  };
-
   return (
-    <nav className="border-b border-border/50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
+    <nav className="sticky top-0 z-50 border-b border-border/70 bg-card/90 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/75">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-2">
-            <div className="p-2 rounded-lg bg-gradient-to-r from-blockchain-primary to-blockchain-secondary">
+            <div className="brand-gradient rounded-lg p-2 shadow-[var(--glow-primary)]">
               <GraduationCap className="h-6 w-6 text-white" />
             </div>
-            <span className="font-bold text-xl bg-gradient-to-r from-blockchain-primary to-blockchain-secondary bg-clip-text text-transparent">
+            <span className="brand-text text-xl font-bold">
               BlockCert
             </span>
           </Link>
@@ -43,7 +42,7 @@ const Navbar = () => {
             <Link to="/verify">
               <Button
                 variant={location.pathname === "/verify" ? "default" : "outline"}
-                className="hidden sm:flex"
+                className="hidden sm:flex shadow-sm"
               >
                 <FileCheck className="mr-2 h-4 w-4" />
                 Verify
@@ -51,30 +50,56 @@ const Navbar = () => {
             </Link>
 
             {isAdminLoggedIn ? (
+              adminRole === "super_admin" ? (
+                <Link to="/super-admin/dashboard">
+                  <Button
+                    variant={location.pathname.includes("/super-admin") ? "default" : "outline"}
+                    className="hidden sm:flex shadow-sm"
+                  >
+                    <Users className="mr-2 h-4 w-4" />
+                    Super Admin
+                  </Button>
+                </Link>
+              ) : (
               <>
                 <Link to="/admin/dashboard">
                   <Button
                     variant={location.pathname.includes("/admin/dashboard") ? "default" : "outline"}
-                    className="hidden sm:flex"
+                    className="hidden sm:flex shadow-sm"
                   >
                     <Shield className="mr-2 h-4 w-4" />
                     Dashboard
                   </Button>
                 </Link>
-                <Button
-                  variant="destructive"
-                  className="hidden sm:flex"
-                  onClick={handleLogout}
-                >
-                  Logout
-                </Button>
-                
+                <Link to="/admin/audit">
+                  <Button
+                    variant={location.pathname.includes("/admin/audit") ? "default" : "outline"}
+                    size="icon"
+                    className="hidden sm:flex shadow-sm"
+                    title="Audit Trail"
+                    aria-label="Audit Trail"
+                  >
+                    <History className="h-4 w-4" />
+                  </Button>
+                </Link>
+                <Link to="/admin/settings">
+                  <Button
+                    variant={location.pathname.includes("/admin/settings") ? "default" : "outline"}
+                    size="icon"
+                    className="hidden sm:flex shadow-sm"
+                    title="Settings"
+                    aria-label="Settings"
+                  >
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                </Link>
               </>
+              )
             ) : (
               <Link to="/admin/login">
                 <Button
                   variant={location.pathname === "/admin/login" ? "default" : "outline"}
-                  className="hidden sm:flex"
+                  className="hidden sm:flex shadow-sm"
                 >
                   <Shield className="mr-2 h-4 w-4" />
                   Admin Login

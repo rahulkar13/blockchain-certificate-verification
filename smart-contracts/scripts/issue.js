@@ -1,28 +1,30 @@
-
 const hre = require("hardhat");
 
 async function main() {
-  // Address of deployed CertificateRegistry contract
-  const contractAddress = "0x0890B2c7fB9d28EAC8f2fCCa04d8AD4945F65b32";
+  const contractAddress = process.env.CONTRACT_ADDRESS;
 
-  // Get contract instance
+  if (!contractAddress) {
+    throw new Error("CONTRACT_ADDRESS is missing in smart-contracts/.env");
+  }
+
   const CertificateRegistry = await hre.ethers.getContractFactory("CertificateRegistry");
   const certificateRegistry = await CertificateRegistry.attach(contractAddress);
 
-  // Sample certificate data
-  const certificateText = "My Test Certificate";
+  const certId = Number(process.env.CERT_ID || 1);
   const certificateHash = hre.ethers.utils.keccak256(
-    hre.ethers.utils.toUtf8Bytes(certificateText)
+    hre.ethers.utils.toUtf8Bytes(process.env.CERT_TEXT || "My Test Certificate")
   );
-
-  const metadataURI = "ipfs://QmExampleHash";
-  const recipientAddress = "0xe8873BedB0Dc24D787c8Ab4AF26869407241dF5e";
+  const metadataURI = process.env.METADATA_URI || "ipfs://QmExampleHash";
+  const recipientAddress =
+    process.env.RECIPIENT_ADDRESS || "0xe8873BedB0Dc24D787c8Ab4AF26869407241dF5e";
 
   console.log("Issuing certificate...");
+  console.log("Contract:", contractAddress);
+  console.log("Certificate ID:", certId);
   console.log("Recipient:", recipientAddress);
 
-  // Issue certificate transaction
   const tx = await certificateRegistry.issueCertificate(
+    certId,
     certificateHash,
     metadataURI,
     recipientAddress
@@ -31,6 +33,7 @@ async function main() {
   await tx.wait();
 
   console.log("Certificate issued successfully");
+  console.log("Transaction hash:", tx.hash);
 }
 
 main().catch((error) => {

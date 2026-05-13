@@ -15,7 +15,7 @@ contract CertificateRegistry is Ownable {
         address issuer;         // Address who issued the certificate
         address recipient;      // Recipient wallet address
         bool revoked;           // Whether the certificate is revoked
-        bool exists;            // Ensure unique IDs
+        bool exists;            // Whether this certificate ID has been used
     }
 
     /// @dev Mapping of certificate ID → Certificate data
@@ -40,13 +40,16 @@ contract CertificateRegistry is Ownable {
      * @param metadataURI IPFS CID link to metadata JSON
      * @param recipient Recipient wallet address
      */
-    function issueCertificate(
+    function _issueCertificate(
         uint256 certId,
         bytes32 certHash,
         string memory metadataURI,
         address recipient
-    ) public returns (uint256) {
-        require(!certificates[certId].exists, "Certificate ID already exists");
+    ) internal returns (uint256) {
+        require(
+            !certificates[certId].exists || certificates[certId].revoked,
+            "Certificate ID already exists"
+        );
         require(recipient != address(0), "Invalid recipient");
         require(certHash != bytes32(0), "Invalid certificate hash");
         require(bytes(metadataURI).length > 0, "Invalid metadata URI");
@@ -62,6 +65,50 @@ contract CertificateRegistry is Ownable {
 
         emit CertificateIssued(certId, certHash, msg.sender, recipient, metadataURI);
         return certId;
+    }
+
+    function issueCertificate(
+        uint256 certId,
+        bytes32 certHash,
+        string memory metadataURI,
+        address recipient
+    ) public onlyOwner returns (uint256) {
+        return _issueCertificate(certId, certHash, metadataURI, recipient);
+    }
+
+    /**
+     * @notice Issue many certificates in one transaction
+     * @param certIds Certificate IDs
+     * @param certHashes SHA-256 hashes of PDF certificate files
+     * @param metadataURIs IPFS CIDs for metadata JSON
+     * @param recipients Recipient wallet addresses
+     */
+    function issueCertificates(
+        uint256[] memory certIds,
+        bytes32[] memory certHashes,
+        string[] memory metadataURIs,
+        address[] memory recipients
+    ) public onlyOwner returns (uint256[] memory) {
+        uint256 length = certIds.length;
+        require(length > 0, "No certificates provided");
+        require(length <= 50, "Too many certificates");
+        require(
+            certHashes.length == length &&
+                metadataURIs.length == length &&
+                recipients.length == length,
+            "Array length mismatch"
+        );
+
+        for (uint256 index = 0; index < length; index++) {
+            _issueCertificate(
+                certIds[index],
+                certHashes[index],
+                metadataURIs[index],
+                recipients[index]
+            );
+        }
+
+        return certIds;
     }
 
     /**

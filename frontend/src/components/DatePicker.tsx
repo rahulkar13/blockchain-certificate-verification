@@ -22,7 +22,7 @@ export default function DatePicker({ date, onSelect }: any) {
           <Button
             variant="outline"
             className={cn(
-              "w-full justify-start text-left font-normal bg-primary/10 border-primary/30 hover:bg-primary/20 hover:border-primary/50",
+              "w-full justify-start bg-card/80 text-left font-normal",
               !date && "text-muted-foreground"
             )}
           >

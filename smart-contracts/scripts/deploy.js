@@ -2,6 +2,33 @@ const fs = require("fs");
 const path = require("path");
 const { ethers } = require("hardhat");
 
+const FRONTEND_PUBLIC_SEPOLIA_RPC = "https://ethereum-sepolia.publicnode.com";
+
+const upsertEnvValue = (envData, key, value) => {
+  const line = `${key}=${value}`;
+  const pattern = new RegExp(`^${key}=.*$`, "m");
+
+  if (pattern.test(envData)) {
+    return envData.replace(pattern, line);
+  }
+
+  return `${envData.trim()}\n${line}\n`;
+};
+
+const updateEnvFile = (envFilePath, values) => {
+  let envData = "";
+
+  if (fs.existsSync(envFilePath)) {
+    envData = fs.readFileSync(envFilePath, "utf8");
+  }
+
+  for (const [key, value] of Object.entries(values)) {
+    envData = upsertEnvValue(envData, key, value);
+  }
+
+  fs.writeFileSync(envFilePath, envData, "utf8");
+};
+
 async function main() {
   // Get deployer account
   const [deployer] = await ethers.getSigners();
@@ -25,21 +52,18 @@ async function main() {
   console.log("CertificateRegistry deployed at:", contractAddress);
 
   // Update frontend environment file
-  const envFilePath = path.join(__dirname, "../../frontend/.env");
-  let envData = "";
+  updateEnvFile(path.join(__dirname, "../../frontend/.env"), {
+    VITE_CONTRACT_ADDRESS: contractAddress,
+    VITE_CHAIN_ID: "11155111",
+    VITE_NETWORK_NAME: "sepolia",
+    VITE_RPC_URL: FRONTEND_PUBLIC_SEPOLIA_RPC,
+  });
 
-  if (fs.existsSync(envFilePath)) {
-    envData = fs.readFileSync(envFilePath, "utf8");
-  }
+  updateEnvFile(path.join(__dirname, "../.env"), {
+    CONTRACT_ADDRESS: contractAddress,
+  });
 
-  // Remove old contract address if present
-  envData = envData.replace(/VITE_CONTRACT_ADDRESS=.*/g, "").trim();
-
-  // Add new contract address
-  envData += `\nVITE_CONTRACT_ADDRESS=${contractAddress}\n`;
-
-  fs.writeFileSync(envFilePath, envData, "utf8");
-  console.log("Frontend .env updated with new contract address");
+  console.log("Frontend .env updated for Sepolia");
 }
 
 main().catch((error) => {

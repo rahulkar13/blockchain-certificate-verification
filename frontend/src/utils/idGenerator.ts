@@ -1,21 +1,24 @@
-import { getContract } from "@/utils/contract";
+import { getApiBaseUrl } from "@/utils/api";
 
 export const getNextCertificateId = async (): Promise<string> => {
-  const contract = await getContract();
-  if (!contract) throw new Error("Smart contract not available");
+  const token = localStorage.getItem("adminToken");
 
-  let nextId = 1n;
-  let exists = true;
-
-  while (exists) {
+  if (token) {
     try {
-      const existing = await (contract as any).certificates(nextId);
-      exists = existing.exists;
-      if (exists) nextId++;
-    } catch {
-      exists = false;
+      const response = await fetch(`${getApiBaseUrl()}/api/issue/next-id`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const payload = await response.json();
+
+      if (response.ok && payload?.certificateId) {
+        return payload.certificateId;
+      }
+    } catch (error) {
+      console.warn("Backend next certificate ID failed.", error);
     }
   }
 
-  return nextId.toString().padStart(4, "0");
+  throw new Error("Could not generate certificate ID. Please refresh and try again.");
 };

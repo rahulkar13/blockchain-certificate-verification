@@ -139,20 +139,72 @@ function dispatch(action: Action) {
 
 type Toast = Omit<ToasterToast, "id">
 
+const developerMessagePatterns = [
+  /backend/i,
+  /server error/i,
+  /mongodb/i,
+  /mongoose/i,
+  /smtp/i,
+  /rpc/i,
+  /\.env/i,
+  /private key/i,
+  /pinata/i,
+  /ipfs/i,
+  /contract/i,
+  /blockchain configuration/i,
+  /failed to fetch/i,
+  /networkerror/i,
+  /typeerror/i,
+  /syntaxerror/i,
+  /cannot read/i,
+  /undefined/i,
+  /null/i,
+  /stack/i,
+]
+
+const sanitizeToastText = (value?: React.ReactNode) => {
+  if (typeof value !== "string") return value
+
+  const trimmedValue = value.trim()
+  if (!trimmedValue) return value
+
+  const isDeveloperMessage = developerMessagePatterns.some((pattern) =>
+    pattern.test(trimmedValue)
+  )
+
+  if (!isDeveloperMessage) return value
+
+  return "Something went wrong. Please try again."
+}
+
 function toast({ ...props }: Toast) {
   const id = genId()
+  const safeProps = {
+    ...props,
+    description:
+      props.variant === "destructive"
+        ? sanitizeToastText(props.description)
+        : props.description,
+  }
 
   const update = (props: ToasterToast) =>
     dispatch({
       type: "UPDATE_TOAST",
-      toast: { ...props, id },
+      toast: {
+        ...props,
+        description:
+          props.variant === "destructive"
+            ? sanitizeToastText(props.description)
+            : props.description,
+        id,
+      },
     })
   const dismiss = () => dispatch({ type: "DISMISS_TOAST", toastId: id })
 
   dispatch({
     type: "ADD_TOAST",
     toast: {
-      ...props,
+      ...safeProps,
       id,
       open: true,
       onOpenChange: (open) => {

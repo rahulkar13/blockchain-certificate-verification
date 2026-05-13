@@ -1,53 +1,63 @@
-const PINATA_API_KEY = import.meta.env.VITE_PINATA_API_KEY;
-const PINATA_SECRET_KEY = import.meta.env.VITE_PINATA_SECRET_KEY;
+import { getApiBaseUrl } from "@/utils/api";
 
-// ⭐ Ultra-fast file upload to IPFS
+const blobToBase64 = (blob: Blob): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.split(",")[1] || "");
+    };
+
+    reader.readAsDataURL(blob);
+  });
+};
+
+const getAuthHeaders = () => {
+  const token = localStorage.getItem("adminToken");
+
+  if (!token) {
+    throw new Error("Please sign in before uploading certificate files.");
+  }
+
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
+};
+
 export const uploadFileToPinata = async (file: File | Blob): Promise<string> => {
-  const url = "https://api.pinata.cloud/pinning/pinFileToIPFS";
-
-  const formData = new FormData();
-  formData.append("file", file);
-
-  // Add metadata (helps Pinata process faster)
-  formData.append(
-    "pinataMetadata",
-    JSON.stringify({
-      name: `certificate_${Date.now()}`,
-    })
-  );
-
-  // Add options (faster pinning)
-  formData.append(
-    "pinataOptions",
-    JSON.stringify({
-      cidVersion: 1,
-    })
-  );
-
-  const response = await fetch(url, {
+  const dataBase64 = await blobToBase64(file);
+  const response = await fetch(`${getApiBaseUrl()}/api/ipfs/file`, {
     method: "POST",
-    headers: {
-      pinata_api_key: PINATA_API_KEY!,
-      pinata_secret_api_key: PINATA_SECRET_KEY!,
-    },
-    body: formData,
+    headers: getAuthHeaders(),
+    body: JSON.stringify({
+      fileName: file instanceof File ? file.name : `certificate_${Date.now()}.pdf`,
+      mimeType: file.type || "application/pdf",
+      dataBase64,
+    }),
   });
 
   if (!response.ok) {
-    const errText = await response.text();
-    console.error("Pinata Upload Error:", errText);
-    throw new Error("Failed to upload file to Pinata");
+    throw new Error("Could not upload the certificate file. Please try again.");
   }
 
   const data = await response.json();
-  return data.IpfsHash;
+  return data.cid;
 };
 
-// ⭐ Ultra-fast JSON metadata upload
 export const uploadMetadataToPinata = async (metadata: any): Promise<string> => {
-  const blob = new Blob([JSON.stringify(metadata)], {
-    type: "application/json",
+  const response = await fetch(`${getApiBaseUrl()}/api/ipfs/metadata`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(metadata),
   });
-  
-  return await uploadFileToPinata(blob);
+
+  if (!response.ok) {
+    throw new Error("Could not save certificate details. Please try again.");
+  }
+
+  const data = await response.json();
+  return data.cid;
 };
