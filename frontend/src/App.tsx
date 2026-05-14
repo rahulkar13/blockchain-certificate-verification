@@ -18,6 +18,27 @@ import PublicCertificate from "./pages/PublicCertificate";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 
 const queryClient = new QueryClient();
+const APP_CLIENT_VERSION = "2026-05-14-admin-verify-v2";
+const APP_CLIENT_VERSION_KEY = "blockcert-client-version";
+
+const resetStaleClientState = () => {
+  if (typeof window === "undefined") return;
+
+  const currentVersion = localStorage.getItem(APP_CLIENT_VERSION_KEY);
+  if (currentVersion === APP_CLIENT_VERSION) return;
+
+  const theme = localStorage.getItem("certichain-theme");
+  localStorage.removeItem("adminToken");
+  localStorage.removeItem("adminUser");
+  localStorage.removeItem("blockcertAdminSettings");
+  localStorage.setItem(APP_CLIENT_VERSION_KEY, APP_CLIENT_VERSION);
+
+  if (theme) {
+    localStorage.setItem("certichain-theme", theme);
+  }
+};
+
+resetStaleClientState();
 
 const RequireAdminLogin = ({ children }: { children: ReactNode }) => {
   const location = useLocation();
