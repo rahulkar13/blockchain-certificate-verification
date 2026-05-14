@@ -28,7 +28,7 @@ export const getCertificateTemplateLabel = (template?: string) => {
 export const defaultAdminPreferences: AdminPreferences = {
   defaultTemplate: "completion",
   autoSendEmail: true,
-  includePublicVerifyLink: true,
+  includePublicVerifyLink: false,
   showChainProgress: true,
   compactDashboard: false,
   exportFormat: "xlsx",

@@ -1,6 +1,6 @@
 import express from "express";
-import mongoose from "mongoose";
 import Certificate from "../models/Certificate.js";
+import { protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
@@ -48,18 +48,16 @@ const sendAmbiguousCertificateResponse = (res, certificates) =>
     certificates: certificates.map(buildCertificateSummary),
   });
 
-const adminScopeFromValue = (adminId) =>
-  adminId && mongoose.Types.ObjectId.isValid(adminId)
-    ? { issuedByAdminId: new mongoose.Types.ObjectId(adminId) }
-    : {};
+const getAuthenticatedCertificateScope = (req) =>
+  req.admin?.role === "super_admin" ? {} : { issuedByAdminId: req.admin._id };
 
 /**
  * Verify certificate by certificateId or IPFS hash
  * Endpoint: POST /api/verify
  */
-router.post("/", async (req, res) => {
+router.post("/", protect, async (req, res) => {
   try {
-    const { certificateId, ipfsPdfHash, adminId } = req.body;
+    const { certificateId, ipfsPdfHash } = req.body;
 
     if (!certificateId && !ipfsPdfHash) {
       return res.status(400).json({
@@ -67,7 +65,7 @@ router.post("/", async (req, res) => {
       });
     }
 
-    const adminScope = adminScopeFromValue(adminId);
+    const adminScope = getAuthenticatedCertificateScope(req);
     let certificate = null;
 
     if (ipfsPdfHash) {
@@ -84,7 +82,7 @@ router.post("/", async (req, res) => {
         .sort({ createdAt: -1 })
         .limit(20);
 
-      if (!adminId && certificates.length > 1) {
+      if (req.admin?.role === "super_admin" && certificates.length > 1) {
         return sendAmbiguousCertificateResponse(res, certificates);
       }
 
@@ -118,12 +116,12 @@ router.post("/", async (req, res) => {
 });
 
 /**
- * Public route: fetch certificate by ID (for QR code)
+ * Protected route: fetch certificate by ID
  * Endpoint: GET /api/verify/:id
  */
-router.get("/:id", async (req, res) => {
+router.get("/:id", protect, async (req, res) => {
   try {
-    const adminScope = adminScopeFromValue(req.query.admin);
+    const adminScope = getAuthenticatedCertificateScope(req);
     const certificates = await Certificate.find({
       ...adminScope,
       certificateId: req.params.id,
@@ -131,7 +129,7 @@ router.get("/:id", async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(20);
 
-    if (!req.query.admin && certificates.length > 1) {
+    if (req.admin?.role === "super_admin" && certificates.length > 1) {
       return sendAmbiguousCertificateResponse(res, certificates);
     }
 

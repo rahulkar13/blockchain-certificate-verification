@@ -2,8 +2,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { DragEvent } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import type { DragEvent, ReactNode } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 import Index from "./pages/Index";
@@ -18,6 +18,18 @@ import PublicCertificate from "./pages/PublicCertificate";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 
 const queryClient = new QueryClient();
+
+const RequireAdminLogin = ({ children }: { children: ReactNode }) => {
+  const location = useLocation();
+  const isLoggedIn =
+    typeof window !== "undefined" && Boolean(localStorage.getItem("adminToken"));
+
+  if (!isLoggedIn) {
+    return <Navigate to="/admin/login" replace state={{ from: location }} />;
+  }
+
+  return <>{children}</>;
+};
 
 const isLinkOrButtonDrag = (target: EventTarget | null) => {
   if (!(target instanceof HTMLElement)) return false;
@@ -71,8 +83,22 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/issue" element={<IssueCertificate />} />
-            <Route path="/verify" element={<VerifyCertificate />} />
-            <Route path="/verify/:id" element={<PublicCertificate />} />
+            <Route
+              path="/verify"
+              element={
+                <RequireAdminLogin>
+                  <VerifyCertificate />
+                </RequireAdminLogin>
+              }
+            />
+            <Route
+              path="/verify/:id"
+              element={
+                <RequireAdminLogin>
+                  <PublicCertificate />
+                </RequireAdminLogin>
+              }
+            />
 
             {/* ✅ Admin System */}
             <Route path="/admin/login" element={<AdminLogin />} />

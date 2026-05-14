@@ -68,17 +68,6 @@ interface BackendCertificate {
   brandingSnapshot?: Record<string, string>;
 }
 
-const getCurrentAdminScopeId = () => {
-  if (typeof window === "undefined") return "";
-
-  try {
-    const savedUser = JSON.parse(localStorage.getItem("adminUser") || "{}");
-    return savedUser?.role === "admin" && savedUser?._id ? String(savedUser._id) : "";
-  } catch {
-    return "";
-  }
-};
-
 const VerifyCertificate = () => {
   const [file, setFile] = useState<File | null>(null);
   const [certificateId, setCertificateId] = useState("");
@@ -136,12 +125,19 @@ const VerifyCertificate = () => {
     return res.json();
   };
 
-  const fetchCertificateRecord = async (certId: string, adminId = "") => {
-    const scopedAdminId = adminId || getCurrentAdminScopeId();
+  const fetchCertificateRecord = async (certId: string) => {
+    const token = localStorage.getItem("adminToken");
+    if (!token) {
+      throw new Error("Please login as an admin before verifying certificates.");
+    }
+
     const publicRes = await fetch(
-      `${getApiBaseUrl()}/api/verify/${encodeURIComponent(certId)}${
-        scopedAdminId ? `?admin=${encodeURIComponent(scopedAdminId)}` : ""
-      }`
+      `${getApiBaseUrl()}/api/verify/${encodeURIComponent(certId)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
     );
     const publicPayload = await publicRes.json().catch(() => ({}));
 
@@ -390,7 +386,7 @@ const VerifyCertificate = () => {
       <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr]">
         <section className="space-y-5">
           <div className="surface-card rounded-lg p-6">
-            <p className="section-kicker mb-3">Public Verification</p>
+            <p className="section-kicker mb-3">Admin Verification</p>
             <h1 className="text-4xl font-bold leading-tight text-foreground">
               Verify certificate proof
             </h1>

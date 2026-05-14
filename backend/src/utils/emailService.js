@@ -135,7 +135,7 @@ const buildCertificateEmailHtml = ({
   issuedBy,
   issuerWalletAddress,
   certificateText,
-  includePublicVerifyLink = true,
+  includePublicVerifyLink = false,
   branding = {},
 }) => `
   <div style="margin:0;padding:0;background:#09111d;font-family:Inter,Arial,sans-serif;color:#eaf7f6;">
@@ -159,7 +159,7 @@ const buildCertificateEmailHtml = ({
             ${escapeHtml(
               certificateText ||
                 (includePublicVerifyLink
-                  ? "The PDF certificate is attached to this email, and you can verify it online anytime."
+                  ? "The PDF certificate is attached to this email, and admins can verify it online after signing in."
                   : "The PDF certificate is attached to this email.")
             )}
           </p>
@@ -209,7 +209,7 @@ const buildCertificateEmailHtml = ({
 
           <p style="margin:0;font-size:13px;line-height:1.6;color:#7f9696;">
             ${includePublicVerifyLink
-              ? "Keep this email for your records. You can share the verification link with recruiters, institutions, or reviewers."
+              ? "Keep this email for your records. The verification link opens after an admin signs in."
               : "Keep this email and the attached certificate PDF for your records."}
           </p>
           ${branding.instituteAddress || branding.instituteWebsite ? `
@@ -388,9 +388,8 @@ export const sendCertificateEmail = async ({
   issuedBy,
   issuerWalletAddress,
   certificateText,
-  includePublicVerifyLink = true,
+  includePublicVerifyLink = false,
   branding,
-  adminId,
 }) => {
   const transporter = getTransporter();
 
@@ -405,9 +404,7 @@ export const sendCertificateEmail = async ({
   const publicFrontendUrl =
     process.env.FRONTEND_PUBLIC_URL || process.env.FRONTEND_ORIGIN?.split(",")[0];
   const verificationBaseUrl = publicFrontendUrl || "http://localhost:5173";
-  const verificationUrl = `${verificationBaseUrl.replace(/\/$/, "")}/verify/${certificateId}${
-    adminId ? `?admin=${encodeURIComponent(String(adminId))}` : ""
-  }`;
+  const verificationUrl = `${verificationBaseUrl.replace(/\/$/, "")}/verify/${certificateId}`;
   const pdfUrl = `https://gateway.pinata.cloud/ipfs/${ipfsPdfHash}`;
   const cleanBase64 = String(pdfBase64 || "").replace(/^data:application\/pdf;base64,/, "");
   const pdfContent = pdfBuffer || (cleanBase64 ? Buffer.from(cleanBase64, "base64") : null);

@@ -33,10 +33,7 @@ export const generateCertificatePDF = async (data: any, certId: string): Promise
   const expiryDate = parseDateOnly(data?.expiryDate);
   const template = data?.template === "achievement" ? "completion" : data?.template || "completion";
   const branding = data?.branding || {};
-  const adminId = String(data?.adminId || "").trim();
-  const verifyUrl = `${window.location.origin}/verify/${encodeURIComponent(certId)}${
-    adminId ? `?admin=${encodeURIComponent(adminId)}` : ""
-  }`;
+  const verifyUrl = `${window.location.origin}/verify/${encodeURIComponent(certId)}`;
   const templates: Record<string, { label: string; title: string; line: string; footer: string }> = {
     completion: {
       label: "Course Completion",

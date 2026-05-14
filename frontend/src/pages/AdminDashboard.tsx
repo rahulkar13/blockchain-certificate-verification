@@ -247,13 +247,8 @@ const AdminDashboard: React.FC = () => {
   const includePublicVerifyLink = adminPreferences.includePublicVerifyLink !== false;
   const isSuperAdminView = adminUser?.role === "super_admin";
 
-  const buildCertificateVerifyPath = (certificateId: string) => {
-    const path = `/verify/${encodeURIComponent(certificateId)}`;
-    const adminId =
-      adminUser?.role !== "super_admin" && adminUser?._id ? String(adminUser._id) : "";
-
-    return adminId ? `${path}?admin=${encodeURIComponent(adminId)}` : path;
-  };
+  const buildCertificateVerifyPath = (certificateId: string) =>
+    `/verify/${encodeURIComponent(certificateId)}`;
 
   const buildCertificateVerifyUrl = (certificateId: string) =>
     `${window.location.origin}${buildCertificateVerifyPath(certificateId)}`;

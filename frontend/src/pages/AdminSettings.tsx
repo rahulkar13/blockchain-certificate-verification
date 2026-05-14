@@ -1526,8 +1526,8 @@ const AdminSettings: React.FC = () => {
               />
               <ToggleRow
                 icon={<Eye className="h-5 w-5" />}
-                title="Include public verify link"
-                description="Show the QR verification link inside certificate email messages."
+                title="Include protected verify link"
+                description="Add an admin-login verification link inside certificate email messages."
                 checked={preferences.includePublicVerifyLink}
                 onCheckedChange={(checked) =>
                   updatePreference("includePublicVerifyLink", checked)

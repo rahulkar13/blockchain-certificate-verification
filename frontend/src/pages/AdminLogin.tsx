@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,6 +34,7 @@ import { getApiBaseUrl } from "@/utils/api";
 
 const AdminLogin = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [isLoading, setIsLoading] = useState(false);
   const [isForgotLoading, setIsForgotLoading] = useState(false);
   const [isSignupLoading, setIsSignupLoading] = useState(false);
@@ -60,18 +61,29 @@ const AdminLogin = () => {
     password: "",
   });
 
+  const getPostLoginPath = (role = "admin") => {
+    const from = (location.state as { from?: { pathname?: string; search?: string } } | null)
+      ?.from;
+
+    if (from?.pathname?.startsWith("/verify")) {
+      return `${from.pathname}${from.search || ""}`;
+    }
+
+    return role === "super_admin" ? "/super-admin/dashboard" : "/admin/dashboard";
+  };
+
   useEffect(() => {
     const token = localStorage.getItem("adminToken");
     if (token) {
       try {
         const savedUser = JSON.parse(localStorage.getItem("adminUser") || "{}");
-        navigate(savedUser.role === "super_admin" ? "/super-admin/dashboard" : "/admin/dashboard");
+        navigate(getPostLoginPath(savedUser.role || "admin"));
       } catch {
         localStorage.removeItem("adminUser");
         navigate("/admin/dashboard");
       }
     }
-  }, [navigate]);
+  }, [navigate, location.state]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData((prev) => ({
@@ -143,7 +155,7 @@ const AdminLogin = () => {
         description: `Welcome back, ${data.name || "Admin"}!`,
       });
 
-      navigate(data.role === "super_admin" ? "/super-admin/dashboard" : "/admin/dashboard");
+      navigate(getPostLoginPath(data.role || "admin"));
     } catch (error) {
       console.error("Login error:", error);
       toast({

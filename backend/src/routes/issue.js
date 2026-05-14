@@ -635,7 +635,7 @@ router.post("/", protect, adminOnly, async (req, res) => {
       chainStatus,
       chainCertificateId,
       sendEmail = true,
-      includePublicVerifyLink = true,
+      includePublicVerifyLink = false,
       certificateText,
       branding,
       allowDuplicate = false,
@@ -728,7 +728,7 @@ router.post("/", protect, adminOnly, async (req, res) => {
     const platformRecipientWalletAddress = platformTx?.recipientWalletAddress || "";
     const shouldConfirmInBackground = chainStatus === "pending" || !blockchainTx;
     const shouldSendEmail = sendEmail !== false;
-    const shouldIncludePublicVerifyLink = includePublicVerifyLink !== false;
+    const shouldIncludePublicVerifyLink = includePublicVerifyLink === true;
     const brandingSnapshot = getBrandingSnapshot(req, branding);
 
     // Save certificate
@@ -923,7 +923,7 @@ router.post("/batch", protect, adminOnly, async (req, res) => {
     const {
       certificates,
       sendEmail = true,
-      includePublicVerifyLink = true,
+      includePublicVerifyLink = false,
       allowDuplicate = false,
     } = req.body;
 
@@ -1059,7 +1059,7 @@ router.post("/batch", protect, adminOnly, async (req, res) => {
     const shouldConfirmInBackground =
       certificates.some((cert) => cert.chainStatus === "pending") || !hasClientBlockchainTx;
     const shouldSendEmail = sendEmail !== false;
-    const shouldIncludePublicVerifyLink = includePublicVerifyLink !== false;
+    const shouldIncludePublicVerifyLink = includePublicVerifyLink === true;
     const createdCertificates = await Certificate.insertMany(
       certificatesWithChainIds.map((cert) => {
         const brandingSnapshot = getBrandingSnapshot(req, cert.branding);
@@ -1633,7 +1633,7 @@ router.post("/:certificateId/resend-email", protect, adminOnly, async (req, res)
 
     const pdfBuffer = await fetchPdfBufferFromIpfs(certificate.ipfsPdfHash);
     const emailPayload = await createEmailPayloadFromCertificate(certificate, pdfBuffer);
-    emailPayload.includePublicVerifyLink = req.body.includePublicVerifyLink !== false;
+    emailPayload.includePublicVerifyLink = req.body.includePublicVerifyLink === true;
     emailPayload.actor = req.admin?.name || "Admin";
 
     queueCertificateEmail(certificate._id, emailPayload, "resend");
@@ -1686,7 +1686,7 @@ router.post("/:certificateId/reissue", protect, adminOnly, async (req, res) => {
       branding,
       issuerWalletAddress,
       sendEmail = true,
-      includePublicVerifyLink = true,
+      includePublicVerifyLink = false,
     } = req.body;
 
     if (
@@ -1809,7 +1809,7 @@ router.post("/:certificateId/reissue", protect, adminOnly, async (req, res) => {
     const nextTemplate = normalizeCertificateTemplate(template);
     const shouldConfirmInBackground = chainStatus === "pending";
     const shouldSendEmail = sendEmail !== false;
-    const shouldIncludePublicVerifyLink = includePublicVerifyLink !== false;
+    const shouldIncludePublicVerifyLink = includePublicVerifyLink === true;
     const reissuedAt = new Date();
     const reissuedBy = req.admin?.name || "Admin";
     const brandingSnapshot = getBrandingSnapshot(req, branding);

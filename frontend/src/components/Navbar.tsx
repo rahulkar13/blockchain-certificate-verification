@@ -39,15 +39,17 @@ const Navbar = () => {
 
           {/* ✅ Right-side buttons */}
           <div className="flex items-center gap-3">
-            <Link to="/verify">
-              <Button
-                variant={location.pathname === "/verify" ? "default" : "outline"}
-                className="hidden sm:flex shadow-sm"
-              >
-                <FileCheck className="mr-2 h-4 w-4" />
-                Verify
-              </Button>
-            </Link>
+            {isAdminLoggedIn && (
+              <Link to="/verify">
+                <Button
+                  variant={location.pathname === "/verify" ? "default" : "outline"}
+                  className="hidden sm:flex shadow-sm"
+                >
+                  <FileCheck className="mr-2 h-4 w-4" />
+                  Verify
+                </Button>
+              </Link>
+            )}
 
             {isAdminLoggedIn ? (
               adminRole === "super_admin" ? (

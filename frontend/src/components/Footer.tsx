@@ -1,4 +1,5 @@
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import {
   BadgeCheck,
   FileSearch,
@@ -8,6 +9,24 @@ import {
 } from "lucide-react";
 
 const Footer = () => {
+  const location = useLocation();
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
+  const [adminRole, setAdminRole] = useState("admin");
+
+  useEffect(() => {
+    setIsAdminLoggedIn(Boolean(localStorage.getItem("adminToken")));
+
+    try {
+      const savedUser = JSON.parse(localStorage.getItem("adminUser") || "{}");
+      setAdminRole(savedUser.role || "admin");
+    } catch {
+      setAdminRole("admin");
+    }
+  }, [location]);
+
+  const dashboardPath =
+    adminRole === "super_admin" ? "/super-admin/dashboard" : "/admin/dashboard";
+
   return (
     <footer className="border-t border-border/70 bg-background/95 px-4 py-8">
       <div className="container mx-auto overflow-hidden rounded-lg border border-border bg-card/80 shadow-[var(--shadow-card)]">
@@ -37,19 +56,21 @@ const Footer = () => {
           <div>
             <p className="mb-4 text-sm font-semibold text-foreground">Quick Links</p>
             <div className="space-y-3 text-sm text-muted-foreground">
+              {isAdminLoggedIn && (
+                <Link
+                  to="/verify"
+                  className="flex items-center gap-2 transition-colors hover:text-primary"
+                >
+                  <FileSearch className="h-4 w-4" />
+                  Verify Certificate
+                </Link>
+              )}
               <Link
-                to="/verify"
-                className="flex items-center gap-2 transition-colors hover:text-primary"
-              >
-                <FileSearch className="h-4 w-4" />
-                Verify Certificate
-              </Link>
-              <Link
-                to="/admin/login"
+                to={isAdminLoggedIn ? dashboardPath : "/admin/login"}
                 className="flex items-center gap-2 transition-colors hover:text-primary"
               >
                 <Shield className="h-4 w-4" />
-                Admin Login
+                {isAdminLoggedIn ? "Admin Dashboard" : "Admin Login"}
               </Link>
             </div>
           </div>

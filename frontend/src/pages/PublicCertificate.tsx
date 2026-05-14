@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import {
   AlertTriangle,
   BadgeCheck,
@@ -69,8 +69,6 @@ const shortHash = (value?: string) => {
 
 const PublicCertificate = () => {
   const { id } = useParams();
-  const [searchParams] = useSearchParams();
-  const adminId = searchParams.get("admin") || "";
   const [record, setRecord] = useState<PublicCertificateRecord | null>(null);
   const [metadata, setMetadata] = useState<CertificateMetadata | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -141,10 +139,18 @@ const PublicCertificate = () => {
       setError("");
 
       try {
+        const token = localStorage.getItem("adminToken");
+        if (!token) {
+          throw new Error("Please login as an admin before verifying certificates.");
+        }
+
         const publicRes = await fetch(
-          `${getApiBaseUrl()}/api/verify/${id}${
-            adminId ? `?admin=${encodeURIComponent(adminId)}` : ""
-          }`
+          `${getApiBaseUrl()}/api/verify/${id}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
         );
         const publicPayload = await publicRes.json().catch(() => null);
 
@@ -188,7 +194,7 @@ const PublicCertificate = () => {
     };
 
     loadCertificate();
-  }, [adminId, id]);
+  }, [id]);
 
   if (isLoading) {
     return (
