@@ -1322,7 +1322,7 @@ const AdminSettings: React.FC = () => {
                       onChange={(event) =>
                         updateBranding("instituteName", event.target.value)
                       }
-                      placeholder="Narula Institute of Technology"
+                      placeholder="Enter institute name"
                     />
                   </div>
                   <div className="space-y-2">

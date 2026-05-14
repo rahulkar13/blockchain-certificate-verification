@@ -2,6 +2,7 @@ import QRCode from "qrcode";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { format } from "date-fns";
+import { parseDateOnly } from "@/utils/dateOnly";
 
 const escapeHtml = (value = "") =>
   String(value)
@@ -12,8 +13,8 @@ const escapeHtml = (value = "") =>
     .replace(/'/g, "&#039;");
 
 const formatCertificateDate = (value: Date | string | number) => {
-  const date = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(date.getTime()) ? "Not set" : format(date, "MMM d, yyyy");
+  const date = parseDateOnly(value);
+  return date ? format(date, "MMM d, yyyy") : "Not set";
 };
 
 const titleCase = (value = "") =>
@@ -28,8 +29,8 @@ const img = (src: string, alt: string, style: string) =>
 export const generateCertificatePDF = async (data: any, certId: string): Promise<File> => {
   const studentName = data?.studentName?.trim() || "Student";
   const courseName = data?.courseName || "Course";
-  const issueDate = data?.issueDate || new Date();
-  const expiryDate = data?.expiryDate ? new Date(data.expiryDate) : null;
+  const issueDate = parseDateOnly(data?.issueDate) || new Date();
+  const expiryDate = parseDateOnly(data?.expiryDate);
   const template = data?.template === "achievement" ? "completion" : data?.template || "completion";
   const branding = data?.branding || {};
   const adminId = String(data?.adminId || "").trim();
@@ -77,10 +78,10 @@ export const generateCertificatePDF = async (data: any, certId: string): Promise
   );
   const certificateBody = bodyIsOnlyDefault ? selectedTemplate.line : brandingBody;
   const certificateFooter = branding.certificateFooter || selectedTemplate.footer;
-  const instituteName = branding.instituteName || "Narula Institute of Technology";
-  const instituteAddress = branding.instituteAddress || "Under JIS University";
-  const logoImage = branding.logoDataUrl || "/assets/logo_left.png";
-  const stampImage = branding.stampDataUrl || "/assets/logo_right.png";
+  const instituteName = String(branding.instituteName || "").trim();
+  const instituteAddress = String(branding.instituteAddress || "").trim();
+  const logoImage = String(branding.logoDataUrl || "").trim();
+  const stampImage = String(branding.stampDataUrl || "").trim();
   const certificateSealImage = "/assets/certificate-seal-red-transparent.png";
   const bgPattern = "/assets/bg_pattern.png";
 
@@ -117,18 +118,34 @@ export const generateCertificatePDF = async (data: any, certId: string): Promise
     <header style="position:relative;z-index:2;display:grid;grid-template-columns:300px 1fr 300px;align-items:center;padding:32px 58px 0;">
       <div style="display:flex;align-items:center;justify-content:center;">
         <div style="width:260px;height:180px;display:flex;align-items:center;justify-content:center;">
-          ${img(logoImage, "Institute logo", "max-width:250px;max-height:172px;object-fit:contain;")}
+          ${
+            logoImage
+              ? img(logoImage, "Institute logo", "max-width:250px;max-height:172px;object-fit:contain;")
+              : ""
+          }
         </div>
       </div>
 
       <div style="text-align:center;padding:0 18px;">
-        <div style="font-size:39px;line-height:1.05;font-weight:800;color:${ink};">${escapeHtml(instituteName)}</div>
-        <div style="font-size:17px;margin-top:7px;color:${muted};">${escapeHtml(instituteAddress)}</div>
+        ${
+          instituteName
+            ? `<div style="font-size:39px;line-height:1.05;font-weight:800;color:${ink};">${escapeHtml(instituteName)}</div>`
+            : ""
+        }
+        ${
+          instituteAddress
+            ? `<div style="font-size:17px;margin-top:7px;color:${muted};">${escapeHtml(instituteAddress)}</div>`
+            : ""
+        }
       </div>
 
       <div style="display:flex;align-items:center;justify-content:center;">
         <div style="width:260px;height:180px;display:flex;align-items:center;justify-content:center;">
-          ${img(stampImage, "Institute stamp", "max-width:250px;max-height:172px;object-fit:contain;")}
+          ${
+            stampImage
+              ? img(stampImage, "Institute stamp", "max-width:250px;max-height:172px;object-fit:contain;")
+              : ""
+          }
         </div>
       </div>
     </header>

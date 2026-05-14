@@ -714,11 +714,19 @@ const SuperAdminDashboard: React.FC = () => {
             Control admin access
           </h1>
           <p className="mt-3 max-w-3xl text-lg text-muted-foreground">
-            Create admins, assign plans, and suspend access. Certificate issue records
-            stay private to each admin, while verification remains public.
+            Create admins, assign plans, suspend access, and review certificate
+            issue records across every institution.
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
+          <Button
+            variant="outline"
+            className="bg-card/80"
+            onClick={() => navigate("/admin/dashboard")}
+          >
+            <FileText className="h-4 w-4" />
+            All Certificates
+          </Button>
           <Button variant="outline" className="bg-card/80" onClick={() => navigate("/verify")}>
             <FileSearch className="h-4 w-4" />
             Verify Certificate

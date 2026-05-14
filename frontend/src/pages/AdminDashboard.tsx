@@ -68,6 +68,7 @@ import { getApiBaseUrl } from "@/utils/api";
 import { generateFileHash } from "@/utils/hash";
 import { generateCertificatePDF } from "@/utils/pdfGenerator";
 import { uploadFileToPinata, uploadMetadataToPinata } from "@/utils/pinata";
+import { isDateAfter, isDateOnOrBefore, parseDateOnly, toDateOnlyString } from "@/utils/dateOnly";
 
 interface Certificate {
   certificateId: string;
@@ -151,16 +152,11 @@ const fileToBase64 = (file: File): Promise<string> =>
   });
 
 const parseDateValue = (value: string) => {
-  if (!value) return undefined;
-  const date = new Date(value.includes("T") ? value : `${value}T00:00:00`);
-  return Number.isNaN(date.getTime()) ? undefined : date;
+  return parseDateOnly(value) || undefined;
 };
 
 const toDateValue = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return toDateOnlyString(date);
 };
 
 const formatDateButtonLabel = (value: string, fallback = "dd-mm-yyyy") => {
@@ -194,6 +190,7 @@ const AdminDashboard: React.FC = () => {
     _id?: string;
     name: string;
     email: string;
+    role?: string;
     walletAddress?: string;
     institutionVerification?: {
       status?: string;
@@ -248,6 +245,18 @@ const AdminDashboard: React.FC = () => {
   const exportFormat = adminPreferences.exportFormat === "csv" ? "csv" : "xlsx";
   const autoSendEmail = adminPreferences.autoSendEmail !== false;
   const includePublicVerifyLink = adminPreferences.includePublicVerifyLink !== false;
+  const isSuperAdminView = adminUser?.role === "super_admin";
+
+  const buildCertificateVerifyPath = (certificateId: string) => {
+    const path = `/verify/${encodeURIComponent(certificateId)}`;
+    const adminId =
+      adminUser?.role !== "super_admin" && adminUser?._id ? String(adminUser._id) : "";
+
+    return adminId ? `${path}?admin=${encodeURIComponent(adminId)}` : path;
+  };
+
+  const buildCertificateVerifyUrl = (certificateId: string) =>
+    `${window.location.origin}${buildCertificateVerifyPath(certificateId)}`;
 
   const getAdminBranding = () => {
     try {
@@ -322,10 +331,6 @@ const AdminDashboard: React.FC = () => {
             locked: false,
           },
         };
-        if (user.role === "super_admin") {
-          navigate("/super-admin/dashboard");
-          return;
-        }
         setAdminUser(user);
         localStorage.setItem("adminUser", JSON.stringify(user));
       }
@@ -440,7 +445,7 @@ const AdminDashboard: React.FC = () => {
   };
 
   const copyPublicLink = async (certificateId: string) => {
-    const link = `${window.location.origin}/verify/${certificateId}`;
+    const link = buildCertificateVerifyUrl(certificateId);
     await navigator.clipboard.writeText(link);
     toast({
       title: "Public link copied",
@@ -544,6 +549,13 @@ const AdminDashboard: React.FC = () => {
         !correctedData.issueDate
       ) {
         throw new Error("Student name, email, course, and issue date are required.");
+      }
+
+      if (
+        correctedData.expiryDate &&
+        !isDateAfter(correctedData.expiryDate, correctedData.issueDate)
+      ) {
+        throw new Error("Expiry date must be after the issue date.");
       }
 
       const pdf = await generateCertificatePDF(correctedData, editingCert.certificateId);
@@ -679,7 +691,7 @@ const AdminDashboard: React.FC = () => {
 
     const tableRows = rows
       .map((cert, index) => {
-        const verificationUrl = `${window.location.origin}/verify/${cert.certificateId}`;
+        const verificationUrl = buildCertificateVerifyUrl(cert.certificateId);
         const pdfUrl = cert.ipfsPdfHash ? `${IPFS_GATEWAY}${cert.ipfsPdfHash}` : "";
         const recordStatus = cert.revoked ? "Revoked" : "Active";
         const recordStatusClass = cert.revoked ? "status-revoked" : "status-active";
@@ -892,7 +904,7 @@ const AdminDashboard: React.FC = () => {
     ];
 
     const body = rows.map((cert, index) => {
-      const verificationUrl = `${window.location.origin}/verify/${cert.certificateId}`;
+      const verificationUrl = buildCertificateVerifyUrl(cert.certificateId);
       const pdfUrl = cert.ipfsPdfHash ? `${IPFS_GATEWAY}${cert.ipfsPdfHash}` : "";
       const recordStatus = cert.revoked
         ? "Revoked"
@@ -1199,7 +1211,9 @@ const AdminDashboard: React.FC = () => {
     picker: "from" | "to" | "edit" | "editExpiry",
     value: string,
     onChange: (value: string) => void,
-    fallback = "dd-mm-yyyy"
+    fallback = "dd-mm-yyyy",
+    disabledDate?: (date: Date) => boolean,
+    triggerDisabled = false
   ) => (
     <Popover
       open={datePickerOpen === picker}
@@ -1209,6 +1223,7 @@ const AdminDashboard: React.FC = () => {
         <Button
           type="button"
           variant="outline"
+          disabled={triggerDisabled}
           className={`w-full justify-start bg-card/80 text-left font-normal ${
             value ? "text-foreground" : "text-muted-foreground"
           }`}
@@ -1221,6 +1236,7 @@ const AdminDashboard: React.FC = () => {
         <Calendar
           mode="single"
           selected={parseDateValue(value)}
+          disabled={disabledDate}
           onSelect={(date) => {
             onChange(date ? toDateValue(date) : "");
             setDatePickerOpen(null);
@@ -1241,13 +1257,15 @@ const AdminDashboard: React.FC = () => {
                 <Shield className="h-6 w-6" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-foreground">Admin Dashboard</h1>
+                <h1 className="text-xl font-bold text-foreground">
+                  {isSuperAdminView ? "Certificate Oversight" : "Admin Dashboard"}
+                </h1>
                 {adminUser ? (
                   <div className="space-y-0.5 text-sm text-muted-foreground">
                     <p>
                       {adminUser.name} ({adminUser.email})
                     </p>
-                    {adminUser.plan && (
+                    {!isSuperAdminView && adminUser.plan && (
                       <p className="text-xs capitalize">
                         {adminUser.plan.name || "trial"} plan -{" "}
                         {adminUser.plan.remaining ?? 0} of{" "}
@@ -1260,17 +1278,23 @@ const AdminDashboard: React.FC = () => {
                         {adminUser.planUpgradeRequest.requestedPlan?.name || "plan"}
                       </p>
                     )}
-                    <p
-                      className={`text-xs font-semibold ${
-                        institutionStatusClass(
+                    {isSuperAdminView ? (
+                      <p className="text-xs font-semibold text-primary">
+                        Viewing certificates across all admins
+                      </p>
+                    ) : (
+                      <p
+                        className={`text-xs font-semibold ${
+                          institutionStatusClass(
+                            adminUser.institutionVerification?.status || "unverified"
+                          )
+                        }`}
+                      >
+                        {institutionStatusLabels[
                           adminUser.institutionVerification?.status || "unverified"
-                        )
-                      }`}
-                    >
-                      {institutionStatusLabels[
-                        adminUser.institutionVerification?.status || "unverified"
-                      ] || "Institution not submitted"}
-                    </p>
+                        ] || "Institution not submitted"}
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground">Loading admin...</p>
@@ -1304,25 +1328,27 @@ const AdminDashboard: React.FC = () => {
 
       <main className="container mx-auto px-4 py-8 sm:px-6">
         <div className="space-y-6">
-          <div className="grid gap-4 lg:grid-cols-[1.35fr_0.65fr]">
-            <Button
-              onClick={() => navigate("/issue")}
-              className="group h-auto min-h-28 justify-start overflow-hidden rounded-lg bg-[linear-gradient(135deg,hsl(var(--primary)),hsl(var(--blockchain-secondary)))] p-0 text-left shadow-[var(--glow-primary)] hover:brightness-105"
-            >
-              <span className="flex min-h-28 w-full items-stretch">
-                <span className="flex w-20 shrink-0 items-center justify-center bg-white/15 ring-1 ring-inset ring-white/20 sm:w-24">
-                  <Plus className="h-8 w-8" />
-                </span>
-                <span className="flex min-w-0 flex-1 items-center justify-between gap-4 px-5 py-4">
-                  <span className="whitespace-normal text-xl font-bold leading-tight sm:text-2xl">
-                    Issue New Certificate
+          <div className={`grid gap-4 ${isSuperAdminView ? "" : "lg:grid-cols-[1.35fr_0.65fr]"}`}>
+            {!isSuperAdminView && (
+              <Button
+                onClick={() => navigate("/issue")}
+                className="group h-auto min-h-28 justify-start overflow-hidden rounded-lg bg-[linear-gradient(135deg,hsl(var(--primary)),hsl(var(--blockchain-secondary)))] p-0 text-left shadow-[var(--glow-primary)] hover:brightness-105"
+              >
+                <span className="flex min-h-28 w-full items-stretch">
+                  <span className="flex w-20 shrink-0 items-center justify-center bg-white/15 ring-1 ring-inset ring-white/20 sm:w-24">
+                    <Plus className="h-8 w-8" />
                   </span>
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-white/16">
-                    <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
+                  <span className="flex min-w-0 flex-1 items-center justify-between gap-4 px-5 py-4">
+                    <span className="whitespace-normal text-xl font-bold leading-tight sm:text-2xl">
+                      Issue New Certificate
+                    </span>
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-white/16">
+                      <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
+                    </span>
                   </span>
                 </span>
-              </span>
-            </Button>
+              </Button>
+            )}
             <Button
               onClick={() => navigate("/verify")}
               variant="outline"
@@ -1655,7 +1681,7 @@ const AdminDashboard: React.FC = () => {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => navigate(`/verify/${cert.certificateId}`)}
+                                  onClick={() => navigate(buildCertificateVerifyPath(cert.certificateId))}
                                   className="bg-card/80"
                                 >
                                   <FileSearch className="h-4 w-4" /> Verify
@@ -1668,46 +1694,50 @@ const AdminDashboard: React.FC = () => {
                                 >
                                   <Copy className="h-4 w-4" /> Link
                                 </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => startEdit(cert)}
-                                  className="bg-card/80"
-                                >
-                                  <Pencil className="h-4 w-4" /> Edit
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  disabled={
-                                    resendingId === cert.certificateId ||
-                                    cert.revoked ||
-                                    cert.chainStatus === "pending" ||
-                                    cert.chainStatus === "failed"
-                                  }
-                                  onClick={() => handleResendEmail(cert)}
-                                  className="bg-card/80"
-                                >
-                                  {resendingId === cert.certificateId ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <Mail className="h-4 w-4" />
-                                  )}
-                                  Resend
-                                </Button>
-                                <Button
-                                  variant="destructive"
-                                  size="sm"
-                                  disabled={Boolean(cert.revoked) || revokingId === cert.certificateId}
-                                  onClick={() => handleRevoke(cert)}
-                                >
-                                  {revokingId === cert.certificateId ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <Ban className="h-4 w-4" />
-                                  )}
-                                  Revoke
-                                </Button>
+                                {!isSuperAdminView && (
+                                  <>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => startEdit(cert)}
+                                      className="bg-card/80"
+                                    >
+                                      <Pencil className="h-4 w-4" /> Edit
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      disabled={
+                                        resendingId === cert.certificateId ||
+                                        cert.revoked ||
+                                        cert.chainStatus === "pending" ||
+                                        cert.chainStatus === "failed"
+                                      }
+                                      onClick={() => handleResendEmail(cert)}
+                                      className="bg-card/80"
+                                    >
+                                      {resendingId === cert.certificateId ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                      ) : (
+                                        <Mail className="h-4 w-4" />
+                                      )}
+                                      Resend
+                                    </Button>
+                                    <Button
+                                      variant="destructive"
+                                      size="sm"
+                                      disabled={Boolean(cert.revoked) || revokingId === cert.certificateId}
+                                      onClick={() => handleRevoke(cert)}
+                                    >
+                                      {revokingId === cert.certificateId ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                      ) : (
+                                        <Ban className="h-4 w-4" />
+                                      )}
+                                      Revoke
+                                    </Button>
+                                  </>
+                                )}
                               </div>
                             </TableCell>
                           </TableRow>
@@ -1809,7 +1839,14 @@ const AdminDashboard: React.FC = () => {
               <div className="space-y-2">
                 <label className="text-sm font-medium text-foreground">Issue Date</label>
                 {renderDateField("edit", editForm.issueDate, (value) =>
-                  setEditForm((prev) => ({ ...prev, issueDate: value }))
+                  setEditForm((prev) => ({
+                    ...prev,
+                    issueDate: value,
+                    expiryDate:
+                      prev.expiryDate && value && !isDateAfter(prev.expiryDate, value)
+                        ? ""
+                        : prev.expiryDate,
+                  }))
                 )}
               </div>
 
@@ -1819,7 +1856,11 @@ const AdminDashboard: React.FC = () => {
                   "editExpiry",
                   editForm.expiryDate,
                   (value) => setEditForm((prev) => ({ ...prev, expiryDate: value })),
-                  "No expiry"
+                  editForm.issueDate ? "No expiry" : "Pick issue date first",
+                  editForm.issueDate
+                    ? (date) => isDateOnOrBefore(date, editForm.issueDate)
+                    : () => true,
+                  !editForm.issueDate
                 )}
               </div>
 

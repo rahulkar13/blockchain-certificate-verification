@@ -14,7 +14,6 @@ import {
 
 const router = express.Router();
 
-router.use(protect, adminOnly);
 const isValidEmail = (email = "") =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim());
 
@@ -174,9 +173,53 @@ const getDateRange = (value) => {
   return { start, end };
 };
 
+const buildHttpError = (message, statusCode = 400) => {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+};
+
+const parseCertificateDate = (value, label) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw buildHttpError(`${label} is invalid.`);
+  }
+
+  return date;
+};
+
+const normalizeCertificateDateRange = (issueDate, expiryDate) => {
+  const normalizedIssueDate = parseCertificateDate(issueDate, "Issue date");
+  const normalizedExpiryDate = expiryDate
+    ? parseCertificateDate(expiryDate, "Expiry date")
+    : undefined;
+
+  if (
+    normalizedExpiryDate &&
+    normalizedExpiryDate.getTime() <= normalizedIssueDate.getTime()
+  ) {
+    throw buildHttpError("Expiry date must be after the issue date.");
+  }
+
+  return {
+    issueDate: normalizedIssueDate,
+    expiryDate: normalizedExpiryDate,
+  };
+};
+
 const getAdminCertificateScope = (req) => ({
   issuedByAdminId: req.admin._id,
 });
+
+const isSuperAdmin = (req) => req.admin?.role === "super_admin";
+
+const getCertificateAccessScope = (req) =>
+  isSuperAdmin(req) ? {} : getAdminCertificateScope(req);
+
+const getCertificateGroupKey = (req) =>
+  isSuperAdmin(req)
+    ? { certificateId: "$certificateId", issuedByAdminId: "$issuedByAdminId" }
+    : "$certificateId";
 
 const getAdminOwnerFields = (req) => ({
   issuedByAdminId: req.admin._id,
@@ -202,18 +245,44 @@ const brandingFields = [
   "secondaryColor",
 ];
 
+const institutionIdentityBrandingFields = [
+  "instituteName",
+  "instituteWebsite",
+  "instituteAddress",
+  "logoDataUrl",
+  "signatureDataUrl",
+  "stampDataUrl",
+];
+
 const normalizeBranding = (branding = {}) =>
   brandingFields.reduce((acc, field) => {
     acc[field] = String(branding?.[field] || "").trim();
     return acc;
   }, {});
 
+const removeUnverifiedInstitutionIdentity = (branding, admin = {}) => {
+  if (admin.institutionVerification?.status === "verified") {
+    return branding;
+  }
+
+  return institutionIdentityBrandingFields.reduce(
+    (acc, field) => ({
+      ...acc,
+      [field]: "",
+    }),
+    branding
+  );
+};
+
 const getBrandingSnapshot = (req, providedBranding) => {
   const adminBranding =
     typeof req.admin.branding?.toObject === "function"
       ? req.admin.branding.toObject()
       : req.admin.branding || {};
-  return normalizeBranding({ ...adminBranding, ...(providedBranding || {}) });
+  return removeUnverifiedInstitutionIdentity(
+    normalizeBranding({ ...adminBranding, ...(providedBranding || {}) }),
+    req.admin
+  );
 };
 
 const buildDuplicateCertificateQuery = (req, payload = {}) => {
@@ -285,6 +354,10 @@ const unownedRecordFilter = (fieldName) => ({
 });
 
 const assignLegacyRecordsToOriginalAdmin = async (req) => {
+  if (req.admin?.role !== "admin") {
+    return;
+  }
+
   const originalAdmin = await Admin.findOne()
     .sort({ createdAt: 1, _id: 1 })
     .select("_id name email");
@@ -517,7 +590,7 @@ const queueChainConfirmation = (certificateMongoId, txHash, emailPayload) => {
   }, 0);
 };
 
-router.post("/duplicates/check", protect, async (req, res) => {
+router.post("/duplicates/check", protect, adminOnly, async (req, res) => {
   try {
     const duplicates = await findPotentialDuplicateCertificates(req, req.body || {});
 
@@ -541,7 +614,7 @@ router.post("/duplicates/check", protect, async (req, res) => {
 
 //Issue a new certificate
  
-router.post("/", protect, async (req, res) => {
+router.post("/", protect, adminOnly, async (req, res) => {
   try {
     const {
       certificateId,
@@ -613,10 +686,15 @@ router.post("/", protect, async (req, res) => {
       });
     }
 
+    const {
+      issueDate: normalizedIssueDate,
+      expiryDate: normalizedExpiryDate,
+    } = normalizeCertificateDateRange(issueDate, expiryDate);
+
     const potentialDuplicates = await findPotentialDuplicateCertificates(req, {
       studentName,
       courseName,
-      issueDate,
+      issueDate: normalizedIssueDate,
       branding,
     });
     if (potentialDuplicates.length > 0 && allowDuplicate !== true) {
@@ -652,7 +730,6 @@ router.post("/", protect, async (req, res) => {
     const shouldSendEmail = sendEmail !== false;
     const shouldIncludePublicVerifyLink = includePublicVerifyLink !== false;
     const brandingSnapshot = getBrandingSnapshot(req, branding);
-    const normalizedExpiryDate = expiryDate ? new Date(expiryDate) : undefined;
 
     // Save certificate
     const newCertificate = await Certificate.create({
@@ -661,7 +738,7 @@ router.post("/", protect, async (req, res) => {
       studentName,
       studentEmail,
       courseName,
-      issueDate,
+      issueDate: normalizedIssueDate,
       expiryDate: normalizedExpiryDate,
       template: normalizeCertificateTemplate(template),
       ipfsPdfHash,
@@ -694,7 +771,7 @@ router.post("/", protect, async (req, res) => {
       studentName,
       courseName,
       certificateId,
-      issueDate,
+      issueDate: normalizedIssueDate,
       expiryDate: normalizedExpiryDate,
       certificateText: newCertificate.certificateText,
       pdfBase64,
@@ -803,7 +880,7 @@ router.post("/", protect, async (req, res) => {
 });
 
 
-router.get("/next-id", protect, async (req, res) => {
+router.get("/next-id", protect, adminOnly, async (req, res) => {
   try {
     await assignLegacyRecordsToOriginalAdmin(req);
 
@@ -841,7 +918,7 @@ router.get("/next-id", protect, async (req, res) => {
   }
 });
 
-router.post("/batch", protect, async (req, res) => {
+router.post("/batch", protect, adminOnly, async (req, res) => {
   try {
     const {
       certificates,
@@ -903,6 +980,13 @@ router.post("/batch", protect, async (req, res) => {
           message: `Invalid student email for certificate ${cert.certificateId}.`,
         });
       }
+
+      const normalizedDates = normalizeCertificateDateRange(
+        cert.issueDate,
+        cert.expiryDate
+      );
+      cert.issueDate = normalizedDates.issueDate;
+      cert.expiryDate = normalizedDates.expiryDate;
     }
 
     const existingIds = await Certificate.find({
@@ -1117,11 +1201,13 @@ router.post("/batch", protect, async (req, res) => {
 router.get("/recent", protect, async (req, res) => {
   try {
     await assignLegacyRecordsToOriginalAdmin(req);
+    const accessScope = getCertificateAccessScope(req);
+    const groupKey = getCertificateGroupKey(req);
 
     const recentCertificates = await Certificate.aggregate([
-      { $match: getAdminCertificateScope(req) },
+      { $match: accessScope },
       { $sort: { createdAt: -1 } },
-      { $group: { _id: "$certificateId", certificate: { $first: "$$ROOT" } } },
+      { $group: { _id: groupKey, certificate: { $first: "$$ROOT" } } },
       { $replaceRoot: { newRoot: "$certificate" } },
       { $sort: { createdAt: -1 } },
       { $limit: 10 },
@@ -1149,7 +1235,14 @@ router.get("/stats", protect, async (req, res) => {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const analyticsStart = new Date(now.getFullYear(), now.getMonth() - 5, 1);
-    const adminScope = getAdminCertificateScope(req);
+    const adminScope = getCertificateAccessScope(req);
+    const groupKey = getCertificateGroupKey(req);
+    const countUniqueCertificates = (match = {}) =>
+      Certificate.aggregate([
+        { $match: match },
+        { $group: { _id: groupKey } },
+        { $count: "count" },
+      ]).then((result) => result[0]?.count || 0);
 
     const [
       total,
@@ -1164,8 +1257,8 @@ router.get("/stats", protect, async (req, res) => {
       monthlyIssued,
       revokedTrend,
     ] = await Promise.all([
-      Certificate.distinct("certificateId", adminScope).then((ids) => ids.length),
-      Certificate.distinct("certificateId", {
+      countUniqueCertificates(adminScope),
+      countUniqueCertificates({
         ...adminScope,
         revoked: { $ne: true },
         $or: [
@@ -1173,29 +1266,25 @@ router.get("/stats", protect, async (req, res) => {
           { expiryDate: null },
           { expiryDate: { $gte: now } },
         ],
-      }).then(
-        (ids) => ids.length
-      ),
-      Certificate.distinct("certificateId", {
+      }),
+      countUniqueCertificates({
         ...adminScope,
         revoked: true,
-      }).then(
-        (ids) => ids.length
-      ),
-      Certificate.distinct("certificateId", {
+      }),
+      countUniqueCertificates({
         ...adminScope,
         revoked: { $ne: true },
         expiryDate: { $lt: now },
-      }).then((ids) => ids.length),
-      Certificate.distinct("certificateId", {
+      }),
+      countUniqueCertificates({
         ...adminScope,
         createdAt: { $gte: monthStart },
-      }).then((ids) => ids.length),
+      }),
       Certificate.findOne(adminScope).sort({ createdAt: -1 }).select("-__v"),
       Certificate.aggregate([
         { $match: adminScope },
         { $sort: { createdAt: -1 } },
-        { $group: { _id: "$certificateId", certificate: { $first: "$$ROOT" } } },
+        { $group: { _id: groupKey, certificate: { $first: "$$ROOT" } } },
         { $replaceRoot: { newRoot: "$certificate" } },
         { $group: { _id: "$courseName", count: { $sum: 1 } } },
         { $sort: { count: -1, _id: 1 } },
@@ -1204,7 +1293,7 @@ router.get("/stats", protect, async (req, res) => {
       Certificate.aggregate([
         { $match: adminScope },
         { $sort: { createdAt: -1 } },
-        { $group: { _id: "$certificateId", certificate: { $first: "$$ROOT" } } },
+        { $group: { _id: groupKey, certificate: { $first: "$$ROOT" } } },
         { $replaceRoot: { newRoot: "$certificate" } },
         { $group: { _id: "$courseName", count: { $sum: 1 } } },
         { $sort: { count: -1, _id: 1 } },
@@ -1213,7 +1302,7 @@ router.get("/stats", protect, async (req, res) => {
       Certificate.aggregate([
         { $match: adminScope },
         { $sort: { createdAt: -1 } },
-        { $group: { _id: "$certificateId", certificate: { $first: "$$ROOT" } } },
+        { $group: { _id: groupKey, certificate: { $first: "$$ROOT" } } },
         { $replaceRoot: { newRoot: "$certificate" } },
         { $group: { _id: { $ifNull: ["$emailStatus", "not_started"] }, count: { $sum: 1 } } },
         { $sort: { count: -1, _id: 1 } },
@@ -1221,7 +1310,7 @@ router.get("/stats", protect, async (req, res) => {
       Certificate.aggregate([
         { $match: { ...adminScope, createdAt: { $gte: analyticsStart } } },
         { $sort: { createdAt: -1 } },
-        { $group: { _id: "$certificateId", certificate: { $first: "$$ROOT" } } },
+        { $group: { _id: groupKey, certificate: { $first: "$$ROOT" } } },
         { $replaceRoot: { newRoot: "$certificate" } },
         {
           $group: {
@@ -1309,7 +1398,8 @@ router.get("/all", protect, async (req, res) => {
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
 
-    const filters = [getAdminCertificateScope(req)];
+    const filters = [getCertificateAccessScope(req)];
+    const groupKey = getCertificateGroupKey(req);
 
     if (req.query.search) {
       filters.push({
@@ -1365,7 +1455,7 @@ router.get("/all", protect, async (req, res) => {
     const uniquePipeline = [
       { $match: searchQuery },
       { $sort: { createdAt: -1 } },
-      { $group: { _id: "$certificateId", certificate: { $first: "$$ROOT" } } },
+      { $group: { _id: groupKey, certificate: { $first: "$$ROOT" } } },
       { $replaceRoot: { newRoot: "$certificate" } },
       { $sort: { createdAt: -1 } },
     ];
@@ -1452,7 +1542,7 @@ router.get("/activity/logs", protect, async (req, res) => {
       dateQuery.$lte = toDate;
     }
 
-    const filter = { adminId: req.admin._id };
+    const filter = isSuperAdmin(req) ? {} : { adminId: req.admin._id };
     if (Object.keys(dateQuery).length) {
       filter.createdAt = dateQuery;
     }
@@ -1496,7 +1586,7 @@ router.get("/activity/logs", protect, async (req, res) => {
   }
 });
 
-router.post("/:certificateId/resend-email", protect, async (req, res) => {
+router.post("/:certificateId/resend-email", protect, adminOnly, async (req, res) => {
   try {
     await assignLegacyRecordsToOriginalAdmin(req);
 
@@ -1570,7 +1660,7 @@ router.post("/:certificateId/resend-email", protect, async (req, res) => {
   }
 });
 
-router.post("/:certificateId/reissue", protect, async (req, res) => {
+router.post("/:certificateId/reissue", protect, adminOnly, async (req, res) => {
   try {
     await assignLegacyRecordsToOriginalAdmin(req);
 
@@ -1627,6 +1717,11 @@ router.post("/:certificateId/reissue", protect, async (req, res) => {
         message: "A valid student email is required.",
       });
     }
+
+    const {
+      issueDate: normalizedIssueDate,
+      expiryDate: normalizedExpiryDate,
+    } = normalizeCertificateDateRange(issueDate, expiryDate);
 
     const certificate = await Certificate.findOne({
       certificateId,
@@ -1736,8 +1831,8 @@ router.post("/:certificateId/reissue", protect, async (req, res) => {
       studentName,
       studentEmail,
       courseName,
-      issueDate: new Date(issueDate),
-      expiryDate: expiryDate ? new Date(expiryDate) : undefined,
+      issueDate: normalizedIssueDate,
+      expiryDate: normalizedExpiryDate,
       template: nextTemplate,
       ipfsPdfHash,
       blockchainTx: finalBlockchainTx,
@@ -1749,10 +1844,10 @@ router.post("/:certificateId/reissue", protect, async (req, res) => {
       studentName: { from: certificate.studentName, to: studentName },
       studentEmail: { from: certificate.studentEmail, to: studentEmail },
       courseName: { from: certificate.courseName, to: courseName },
-      issueDate: { from: certificate.issueDate, to: new Date(issueDate) },
+      issueDate: { from: certificate.issueDate, to: normalizedIssueDate },
       expiryDate: {
         from: certificate.expiryDate,
-        to: expiryDate ? new Date(expiryDate) : undefined,
+        to: normalizedExpiryDate,
       },
       template: { from: certificate.template, to: nextTemplate },
       ipfsPdfHash: { from: certificate.ipfsPdfHash, to: ipfsPdfHash },
@@ -1766,8 +1861,8 @@ router.post("/:certificateId/reissue", protect, async (req, res) => {
     certificate.studentName = studentName;
     certificate.studentEmail = studentEmail;
     certificate.courseName = courseName;
-    certificate.issueDate = new Date(issueDate);
-    certificate.expiryDate = expiryDate ? new Date(expiryDate) : undefined;
+    certificate.issueDate = normalizedIssueDate;
+    certificate.expiryDate = normalizedExpiryDate;
     certificate.template = nextTemplate;
     certificate.ipfsPdfHash = ipfsPdfHash;
     certificate.metadataCid = metadataCid;
@@ -1822,7 +1917,7 @@ router.post("/:certificateId/reissue", protect, async (req, res) => {
       studentName,
       courseName,
       certificateId,
-      issueDate,
+      issueDate: normalizedIssueDate,
       expiryDate: certificate.expiryDate,
       certificateText: certificate.certificateText,
       pdfBase64,
@@ -1899,7 +1994,7 @@ router.post("/:certificateId/reissue", protect, async (req, res) => {
   }
 });
 
-router.patch("/:certificateId", protect, async (req, res) => {
+router.patch("/:certificateId", protect, adminOnly, async (req, res) => {
   try {
     await assignLegacyRecordsToOriginalAdmin(req);
 
@@ -1946,15 +2041,20 @@ router.patch("/:certificateId", protect, async (req, res) => {
       });
     }
 
+    const {
+      issueDate: normalizedIssueDate,
+      expiryDate: normalizedExpiryDate,
+    } = normalizeCertificateDateRange(issueDate, expiryDate);
+
     const nextTemplate = normalizeCertificateTemplate(template);
     const changes = {
       studentName: { from: certificate.studentName, to: studentName },
       studentEmail: { from: certificate.studentEmail, to: studentEmail },
       courseName: { from: certificate.courseName, to: courseName },
-      issueDate: { from: certificate.issueDate, to: new Date(issueDate) },
+      issueDate: { from: certificate.issueDate, to: normalizedIssueDate },
       expiryDate: {
         from: certificate.expiryDate,
-        to: expiryDate ? new Date(expiryDate) : undefined,
+        to: normalizedExpiryDate,
       },
       template: { from: certificate.template, to: nextTemplate },
     };
@@ -1962,8 +2062,8 @@ router.patch("/:certificateId", protect, async (req, res) => {
     certificate.studentName = studentName;
     certificate.studentEmail = studentEmail;
     certificate.courseName = courseName;
-    certificate.issueDate = new Date(issueDate);
-    certificate.expiryDate = expiryDate ? new Date(expiryDate) : undefined;
+    certificate.issueDate = normalizedIssueDate;
+    certificate.expiryDate = normalizedExpiryDate;
     certificate.template = nextTemplate;
     certificate.editedAt = new Date();
     certificate.editedBy = req.admin?.name || "Admin";
@@ -2003,7 +2103,7 @@ router.patch("/:certificateId", protect, async (req, res) => {
   }
 });
 
-router.patch("/:certificateId/revoke", protect, async (req, res) => {
+router.patch("/:certificateId/revoke", protect, adminOnly, async (req, res) => {
   try {
     await assignLegacyRecordsToOriginalAdmin(req);
 

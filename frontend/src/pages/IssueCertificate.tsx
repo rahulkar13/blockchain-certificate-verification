@@ -20,6 +20,7 @@ import { generateCertificatePDF } from "@/utils/pdfGenerator";
 import { loadAdminPreferences, normalizeCertificateTemplate } from "@/utils/adminSettings";
 import { saveBatchToBackend, saveToBackend } from "@/utils/saveToBackend";
 import { getApiBaseUrl } from "@/utils/api";
+import { isDateAfter, toDateOnlyString } from "@/utils/dateOnly";
 
 export default function IssueCertificate() {
   const navigate = useNavigate();
@@ -98,6 +99,21 @@ export default function IssueCertificate() {
     }
   };
 
+  const getIssueBranding = () => {
+    const { branding, institutionStatus } = getAdminBranding();
+    const canUseInstitutionIdentity = institutionStatus === "verified";
+
+    return {
+      ...branding,
+      instituteName: canUseInstitutionIdentity ? branding.instituteName || "" : "",
+      instituteWebsite: canUseInstitutionIdentity ? branding.instituteWebsite || "" : "",
+      instituteAddress: canUseInstitutionIdentity ? branding.instituteAddress || "" : "",
+      logoDataUrl: canUseInstitutionIdentity ? branding.logoDataUrl || "" : "",
+      signatureDataUrl: canUseInstitutionIdentity ? branding.signatureDataUrl || "" : "",
+      stampDataUrl: canUseInstitutionIdentity ? branding.stampDataUrl || "" : "",
+    };
+  };
+
   const ensureInstitutionCanIssue = (requestedCount = 1) => {
     const { institutionStatus, plan } = getAdminBranding();
     if (institutionStatus === "verified") return true;
@@ -121,13 +137,30 @@ export default function IssueCertificate() {
     return false;
   };
 
-  const applyBranding = (data: any) => {
-    const { branding, adminId } = getAdminBranding();
+  const normalizeCertificateDates = (data: any) => {
+    const issueDate = toDateOnlyString(data.issueDate || new Date());
+    const expiryDate = toDateOnlyString(data.expiryDate);
+
+    if (expiryDate && !isDateAfter(expiryDate, issueDate)) {
+      throw new Error("Expiry date must be after the issue date.");
+    }
+
     return {
       ...data,
+      issueDate,
+      expiryDate,
+    };
+  };
+
+  const applyBranding = (data: any) => {
+    const { adminId } = getAdminBranding();
+    const branding = getIssueBranding();
+    const normalizedData = normalizeCertificateDates(data);
+    return {
+      ...normalizedData,
       adminId,
       branding,
-      certificateText: data.certificateText || branding.certificateBody || "",
+      certificateText: normalizedData.certificateText || branding.certificateBody || "",
     };
   };
 
@@ -171,8 +204,8 @@ export default function IssueCertificate() {
     for (const row of rows) {
       const data = applyBranding({
         ...row,
-        issueDate: row.issueDate ? new Date(row.issueDate) : new Date(),
-        expiryDate: row.expiryDate ? new Date(row.expiryDate) : null,
+        issueDate: row.issueDate || new Date(),
+        expiryDate: row.expiryDate || "",
         template: normalizeCertificateTemplate(row.template || defaultTemplate),
       });
       const token = localStorage.getItem("adminToken");
@@ -241,7 +274,7 @@ export default function IssueCertificate() {
       studentName: get("studentName", "student name", "name"),
       studentEmail: get("studentEmail", "student email", "email"),
       courseName: get("courseName", "course name", "course"),
-      issueDate: get("issueDate", "issue date", "date") || new Date().toISOString(),
+      issueDate: get("issueDate", "issue date", "date") || toDateOnlyString(new Date()),
       additionalInfo: get("additionalInfo", "additional info", "info"),
       expiryDate: get("expiryDate", "expiry date", "valid until", "validTill"),
       template: normalizeCertificateTemplate(get("template") || defaultTemplate),
@@ -438,6 +471,14 @@ export default function IssueCertificate() {
     if (missingRow) {
       throw new Error("Every CSV row needs studentName, studentEmail, courseName, and issueDate.");
     }
+
+    const invalidExpiryRow = bulkRows.find(
+      (row) => row.expiryDate && !isDateAfter(row.expiryDate, row.issueDate)
+    );
+
+    if (invalidExpiryRow) {
+      throw new Error("Every expiryDate must be after its issueDate.");
+    }
   };
 
   const handleBatchIssue = async () => {
@@ -467,8 +508,8 @@ export default function IssueCertificate() {
         const certId = certIds[index];
         const data = applyBranding({
           ...row,
-          issueDate: row.issueDate ? new Date(row.issueDate) : new Date(),
-          expiryDate: row.expiryDate ? new Date(row.expiryDate) : null,
+          issueDate: row.issueDate || new Date(),
+          expiryDate: row.expiryDate || "",
           template: normalizeCertificateTemplate(row.template || defaultTemplate),
         });
 

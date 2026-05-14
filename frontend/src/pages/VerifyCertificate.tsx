@@ -68,6 +68,17 @@ interface BackendCertificate {
   brandingSnapshot?: Record<string, string>;
 }
 
+const getCurrentAdminScopeId = () => {
+  if (typeof window === "undefined") return "";
+
+  try {
+    const savedUser = JSON.parse(localStorage.getItem("adminUser") || "{}");
+    return savedUser?.role === "admin" && savedUser?._id ? String(savedUser._id) : "";
+  } catch {
+    return "";
+  }
+};
+
 const VerifyCertificate = () => {
   const [file, setFile] = useState<File | null>(null);
   const [certificateId, setCertificateId] = useState("");
@@ -126,9 +137,10 @@ const VerifyCertificate = () => {
   };
 
   const fetchCertificateRecord = async (certId: string, adminId = "") => {
+    const scopedAdminId = adminId || getCurrentAdminScopeId();
     const publicRes = await fetch(
       `${getApiBaseUrl()}/api/verify/${encodeURIComponent(certId)}${
-        adminId ? `?admin=${encodeURIComponent(adminId)}` : ""
+        scopedAdminId ? `?admin=${encodeURIComponent(scopedAdminId)}` : ""
       }`
     );
     const publicPayload = await publicRes.json().catch(() => ({}));

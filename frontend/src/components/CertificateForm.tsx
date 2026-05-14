@@ -28,6 +28,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { normalizeCertificateTemplate } from "@/utils/adminSettings";
+import { isDateAfter, isDateOnOrBefore, parseDateOnly, toDateOnlyString } from "@/utils/dateOnly";
 
 type CertificateDraft = {
   studentName?: string;
@@ -70,8 +71,8 @@ export default function CertificateForm({
     setStudentName(draftData.studentName || "");
     setStudentEmail(draftData.studentEmail || "");
     setCourseName(draftData.courseName || "");
-    setIssueDate(draftData.issueDate ? new Date(draftData.issueDate) : null);
-    setExpiryDate(draftData.expiryDate ? new Date(draftData.expiryDate) : null);
+    setIssueDate(parseDateOnly(draftData.issueDate));
+    setExpiryDate(parseDateOnly(draftData.expiryDate));
     setAdditionalInfo(draftData.additionalInfo || "");
     setTemplate(normalizeCertificateTemplate(draftData.template || defaultTemplate));
   }, [draftData, defaultTemplate]);
@@ -86,12 +87,18 @@ export default function CertificateForm({
     setStudentEmail(value);
   };
 
+  useEffect(() => {
+    if (issueDate && expiryDate && !isDateAfter(expiryDate, issueDate)) {
+      setExpiryDate(null);
+    }
+  }, [issueDate, expiryDate]);
+
   const collectData = () => ({
     studentName,
     studentEmail,
     courseName,
-    issueDate,
-    expiryDate,
+    issueDate: toDateOnlyString(issueDate),
+    expiryDate: toDateOnlyString(expiryDate),
     additionalInfo,
     template,
   });
@@ -106,6 +113,15 @@ export default function CertificateForm({
       return;
     }
 
+    if (expiryDate && !isDateAfter(expiryDate, issueDate)) {
+      toast({
+        title: "Invalid expiry date",
+        description: "Expiry date must be after the issue date.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     onPreview?.(collectData());
   };
 
@@ -115,6 +131,15 @@ export default function CertificateForm({
       toast({
         title: "Missing details",
         description: "Please fill all required fields.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (expiryDate && !isDateAfter(expiryDate, issueDate)) {
+      toast({
+        title: "Invalid expiry date",
+        description: "Expiry date must be after the issue date.",
         variant: "destructive",
       });
       return;
@@ -209,7 +234,11 @@ export default function CertificateForm({
                     mode="single"
                     selected={issueDate ?? undefined}
                     onSelect={(date) => {
-                      setIssueDate(date ?? null);
+                      const nextDate = parseDateOnly(date);
+                      setIssueDate(nextDate);
+                      if (nextDate && expiryDate && !isDateAfter(expiryDate, nextDate)) {
+                        setExpiryDate(null);
+                      }
                       setIsCalendarOpen(false);
                     }}
                     initialFocus
@@ -225,23 +254,38 @@ export default function CertificateForm({
                   <Button
                     type="button"
                     variant="outline"
+                    disabled={!issueDate}
                     className={cn(
                       "w-full justify-start bg-card/80 text-left font-normal",
                       !expiryDate && "text-muted-foreground"
                     )}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
-                    {expiryDate ? format(expiryDate, "PPP") : "No expiry"}
+                    {expiryDate
+                      ? format(expiryDate, "PPP")
+                      : issueDate
+                        ? "No expiry"
+                        : "Pick issue date first"}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
                   <Calendar
                     mode="single"
                     selected={expiryDate ?? undefined}
+                    disabled={(date) => !issueDate || isDateOnOrBefore(date, issueDate)}
                     onSelect={(date) => {
-                      setExpiryDate(date ?? null);
+                      if (date && issueDate && !isDateAfter(date, issueDate)) {
+                        toast({
+                          title: "Invalid expiry date",
+                          description: "Choose a date after the issue date.",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+                      setExpiryDate(parseDateOnly(date));
                       setIsExpiryCalendarOpen(false);
                     }}
+                    defaultMonth={expiryDate || issueDate || undefined}
                     initialFocus
                   />
                 </PopoverContent>
