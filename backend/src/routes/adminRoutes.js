@@ -156,11 +156,15 @@ const findVerifiedInstitutionConflict = async ({ instituteName, adminId }) => {
   const institutionKey = normalizeInstitutionKey(instituteName);
   if (!institutionKey) return null;
 
-  return Admin.findOne({
-    _id: { $ne: adminId },
+  const currentAdminId = adminId ? String(adminId) : "";
+  const verifiedMatches = await Admin.find({
     institutionKey,
     "institutionVerification.status": "verified",
   }).select("_id name email branding institutionKey institutionVerification");
+
+  return (
+    verifiedMatches.find((admin) => String(admin._id) !== currentAdminId) || null
+  );
 };
 
 const publicAdminSignupEnabled = process.env.ALLOW_PUBLIC_ADMIN_SIGNUP !== "false";
