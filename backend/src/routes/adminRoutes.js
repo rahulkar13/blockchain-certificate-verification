@@ -152,18 +152,27 @@ const hasInstitutionIdentityChange = (currentBranding = {}, nextBranding = {}) =
       String(nextBranding?.[field] || "").trim()
   );
 
-const findVerifiedInstitutionConflict = async ({ instituteName, adminId }) => {
+const findVerifiedInstitutionConflict = async ({
+  instituteName,
+  adminId,
+  adminEmail,
+}) => {
   const institutionKey = normalizeInstitutionKey(instituteName);
   if (!institutionKey) return null;
 
   const currentAdminId = adminId ? String(adminId) : "";
+  const currentAdminEmail = normalizeEmail(adminEmail);
   const verifiedMatches = await Admin.find({
     institutionKey,
     "institutionVerification.status": "verified",
   }).select("_id name email branding institutionKey institutionVerification");
 
   return (
-    verifiedMatches.find((admin) => String(admin._id) !== currentAdminId) || null
+    verifiedMatches.find(
+      (admin) =>
+        String(admin._id) !== currentAdminId &&
+        normalizeEmail(admin.email) !== currentAdminEmail
+    ) || null
   );
 };
 
@@ -1290,6 +1299,7 @@ router.patch(
         const conflict = await findVerifiedInstitutionConflict({
           instituteName: branding.instituteName,
           adminId: admin._id,
+          adminEmail: admin.email,
         });
 
         if (conflict) {
@@ -1462,6 +1472,7 @@ router.patch("/me", protect, async (req, res) => {
       const conflict = await findVerifiedInstitutionConflict({
         instituteName: branding.instituteName,
         adminId: admin._id,
+        adminEmail: admin.email,
       });
 
       if (conflict) {
