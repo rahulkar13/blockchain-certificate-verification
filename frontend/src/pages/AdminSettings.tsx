@@ -1522,7 +1522,7 @@ const AdminSettings: React.FC = () => {
               Certificate Template Builder
             </CardTitle>
             <CardDescription>
-              Customize the certificate title, body line, footer, and brand colors.
+              Customize the certificate title, footer, and brand colors.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
@@ -1549,17 +1549,6 @@ const AdminSettings: React.FC = () => {
                   placeholder="Authorized by Blockchain Certificate System"
                 />
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="certificate-body">Certificate Body Line</Label>
-              <Textarea
-                id="certificate-body"
-                value={profile.branding.certificateBody}
-                onChange={(event) =>
-                  updateBranding("certificateBody", event.target.value)
-                }
-                placeholder="has successfully completed the course"
-              />
             </div>
           </CardContent>
         </Card>
