@@ -176,6 +176,22 @@ const findVerifiedInstitutionConflict = async ({
   );
 };
 
+const isSameAdminIdentity = (candidate = {}, admin = {}, fallbackAdmin = {}) => {
+  const candidateId = candidate?._id ? String(candidate._id) : "";
+  const candidateEmail = normalizeEmail(candidate?.email);
+  const currentIds = [admin?._id, admin?.id, fallbackAdmin?._id, fallbackAdmin?.id]
+    .filter(Boolean)
+    .map((id) => String(id));
+  const currentEmails = [admin?.email, fallbackAdmin?.email]
+    .map((email) => normalizeEmail(email))
+    .filter(Boolean);
+
+  return (
+    (candidateId && currentIds.includes(candidateId)) ||
+    (candidateEmail && currentEmails.includes(candidateEmail))
+  );
+};
+
 const publicAdminSignupEnabled = process.env.ALLOW_PUBLIC_ADMIN_SIGNUP !== "false";
 
 const blockPublicAdminSignup = (res) =>
@@ -1302,7 +1318,7 @@ router.patch(
           adminEmail: admin.email,
         });
 
-        if (conflict) {
+        if (conflict && !isSameAdminIdentity(conflict, admin, req.admin)) {
           return res.status(409).json({
             message: `This institute is already verified for ${conflict.name} (${conflict.email}).`,
           });
@@ -1475,7 +1491,7 @@ router.patch("/me", protect, async (req, res) => {
         adminEmail: admin.email,
       });
 
-      if (conflict) {
+      if (conflict && !isSameAdminIdentity(conflict, admin, req.admin)) {
         return res.status(409).json({
           message: `This institute is already verified for ${conflict.name} (${conflict.email}).`,
         });
