@@ -157,6 +157,8 @@ const requiredInstitutionDocumentTypes: InstitutionDocument["type"][] = [
   "authorization_letter",
 ];
 
+const AUTO_REFRESH_INTERVAL_MS = 15000;
+
 const planOptions = [
   { value: "basic", label: "Basic", limit: "100" },
   { value: "pro", label: "Pro", limit: "500" },
@@ -234,9 +236,13 @@ const AdminSettings: React.FC = () => {
   const isVerifiedInstitutionEdit = isInstitutionVerified && isEditingInstitution;
   const isTrialPlan = profile.plan?.name === "trial";
   const canAccessInstitutionBranding = !isTrialPlan;
-  const hasRequiredInstitutionDocuments = requiredInstitutionDocumentTypes.every((type) =>
-    profile.institutionDocuments.some((document) => document.type === type && document.dataUrl)
+  const missingInstitutionDocumentTypes = requiredInstitutionDocumentTypes.filter(
+    (type) =>
+      !profile.institutionDocuments.some(
+        (document) => document.type === type && document.dataUrl
+      )
   );
+  const hasRequiredInstitutionDocuments = missingInstitutionDocumentTypes.length === 0;
   const institutionFieldsDisabled =
     !canAccessInstitutionBranding || !isEditingInstitution;
   const canRequestInstitutionApproval =
@@ -254,6 +260,16 @@ const AdminSettings: React.FC = () => {
       : isInstitutionVerified
         ? "Approved"
         : "Approval";
+  const institutionApprovalHint =
+    isEditingInstitution && !canRequestInstitutionApproval
+      ? !profile.branding.instituteName.trim()
+        ? "Enter the institute name before sending for approval."
+        : !hasRequiredInstitutionDocuments
+          ? `Upload ${missingInstitutionDocumentTypes
+              .map((type) => institutionDocumentLabels[type])
+              .join(" and ")} before sending for approval.`
+          : ""
+      : "";
   const planRequestStatus = profile.planUpgradeRequest?.status || "none";
   const planLimit = Number(profile.plan?.certificateLimit ?? 5);
   const planRemaining = Number(profile.plan?.remaining ?? 0);
@@ -277,6 +293,34 @@ const AdminSettings: React.FC = () => {
   }, [navigate, token]);
 
   useEffect(() => {
+    if (
+      !token ||
+      isEditingInstitution ||
+      isSavingProfile ||
+      isRequestingPlan ||
+      isSendingReset ||
+      isResettingPassword
+    ) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void fetchProfile(token, { silent: true });
+      }
+    }, AUTO_REFRESH_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [
+    isEditingInstitution,
+    isRequestingPlan,
+    isResettingPassword,
+    isSavingProfile,
+    isSendingReset,
+    token,
+  ]);
+
+  useEffect(() => {
     return () => {
       if (planLimitRepeatDelayRef.current !== null) {
         window.clearTimeout(planLimitRepeatDelayRef.current);
@@ -287,8 +331,14 @@ const AdminSettings: React.FC = () => {
     };
   }, []);
 
-  const fetchProfile = async (authToken: string) => {
-    setIsLoading(true);
+  const fetchProfile = async (
+    authToken: string,
+    options: { silent?: boolean } = {}
+  ) => {
+    const { silent = false } = options;
+    if (!silent) {
+      setIsLoading(true);
+    }
     try {
       const response = await fetch(`${getApiBaseUrl()}/api/admin/me`, {
         headers: { Authorization: `Bearer ${authToken}` },
@@ -332,7 +382,7 @@ const AdminSettings: React.FC = () => {
         createdAt: data.createdAt,
       };
       setProfile(nextProfile);
-      if (nextProfile.planUpgradeRequest?.requestedPlan?.name) {
+      if (!silent && nextProfile.planUpgradeRequest?.requestedPlan?.name) {
         setPlanRequestForm({
           planName: nextProfile.planUpgradeRequest.requestedPlan.name,
           certificateLimit: String(
@@ -350,13 +400,17 @@ const AdminSettings: React.FC = () => {
       }
       localStorage.setItem("adminUser", JSON.stringify(nextProfile));
     } catch (error: any) {
-      toast({
-        title: "Settings not loaded",
-        description: error?.message || "Please try again.",
-        variant: "destructive",
-      });
+      if (!silent) {
+        toast({
+          title: "Settings not loaded",
+          description: error?.message || "Please try again.",
+          variant: "destructive",
+        });
+      }
     } finally {
-      setIsLoading(false);
+      if (!silent) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -1292,6 +1346,11 @@ const AdminSettings: React.FC = () => {
                     Edit
                   </Button>
                 )}
+                {institutionApprovalHint && (
+                  <p className="basis-full text-xs text-muted-foreground sm:max-w-sm sm:text-right">
+                    {institutionApprovalHint}
+                  </p>
+                )}
               </div>
             )}
           </CardHeader>
@@ -1447,7 +1506,7 @@ const AdminSettings: React.FC = () => {
                   </div>
                   {!hasRequiredInstitutionDocuments && (
                     <p className="mt-3 rounded-md border border-primary/30 bg-primary/10 px-3 py-2 text-sm text-muted-foreground">
-                      Approval button unlocks after both proof documents are uploaded.
+                      Upload both proof documents before sending for approval.
                     </p>
                   )}
                 </div>

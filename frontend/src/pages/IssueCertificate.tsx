@@ -22,6 +22,8 @@ import { saveBatchToBackend, saveToBackend } from "@/utils/saveToBackend";
 import { getApiBaseUrl } from "@/utils/api";
 import { isDateAfter, toDateOnlyString } from "@/utils/dateOnly";
 
+const AUTO_REFRESH_INTERVAL_MS = 15000;
+
 export default function IssueCertificate() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -35,6 +37,42 @@ export default function IssueCertificate() {
   );
   const defaultTemplate = normalizeCertificateTemplate(issueSettings.defaultTemplate);
   const showChainProgress = issueSettings.showChainProgress !== false;
+
+  const syncAdminProfile = async (authToken: string) => {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/api/admin/me`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+
+      if (!response.ok) return;
+      const data = await response.json();
+      if (data.role === "super_admin") {
+        navigate("/super-admin/dashboard");
+        return;
+      }
+
+      localStorage.setItem(
+        "adminUser",
+        JSON.stringify({
+          _id: data._id,
+          name: data.name,
+          email: data.email,
+          walletAddress: data.walletAddress || "",
+          role: data.role || "admin",
+          status: data.status || "active",
+          plan: data.plan,
+          planUpgradeRequest: data.planUpgradeRequest || { status: "none" },
+          branding: data.branding || {},
+          institutionVerification: data.institutionVerification || {
+            status: "unverified",
+            locked: false,
+          },
+        })
+      );
+    } catch {
+      return;
+    }
+  };
 
   useEffect(() => {
     const token = localStorage.getItem("adminToken");
@@ -52,38 +90,16 @@ export default function IssueCertificate() {
       localStorage.removeItem("adminUser");
     }
 
-    fetch(`${getApiBaseUrl()}/api/admin/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(async (response) => {
-        if (!response.ok) return;
-        const data = await response.json();
-        if (data.role === "super_admin") {
-          navigate("/super-admin/dashboard");
-          return;
-        }
+    void syncAdminProfile(token);
 
-        localStorage.setItem(
-          "adminUser",
-          JSON.stringify({
-            _id: data._id,
-            name: data.name,
-            email: data.email,
-            walletAddress: data.walletAddress || "",
-            role: data.role || "admin",
-            status: data.status || "active",
-            plan: data.plan,
-            planUpgradeRequest: data.planUpgradeRequest || { status: "none" },
-            branding: data.branding || {},
-            institutionVerification: data.institutionVerification || {
-              status: "unverified",
-              locked: false,
-            },
-          })
-        );
-      })
-      .catch(() => undefined);
-  }, [navigate]);
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible" && !loading && !previewLoading) {
+        void syncAdminProfile(token);
+      }
+    }, AUTO_REFRESH_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [loading, navigate, previewLoading]);
 
   const getAdminBranding = () => {
     try {

@@ -195,6 +195,8 @@ const institutionStatusClass = (status: InstitutionVerification["status"] = "unv
   return "border-border bg-muted/50 text-muted-foreground";
 };
 
+const AUTO_REFRESH_INTERVAL_MS = 15000;
+
 const SuperAdminDashboard: React.FC = () => {
   const navigate = useNavigate();
   const token = useMemo(() => localStorage.getItem("adminToken"), []);
@@ -205,6 +207,7 @@ const SuperAdminDashboard: React.FC = () => {
   const [busyAdminId, setBusyAdminId] = useState<string | null>(null);
   const [planEdits, setPlanEdits] = useState<Record<string, PlanDraft>>({});
   const [managedAdminSearch, setManagedAdminSearch] = useState("");
+  const dirtyPlanEditIdsRef = useRef<Set<string>>(new Set());
 
   const filteredAdmins = useMemo(() => {
     const query = managedAdminSearch.trim().toLowerCase();
@@ -267,11 +270,22 @@ const SuperAdminDashboard: React.FC = () => {
     expiresAt: toDateInputValue(admin.plan?.expiresAt),
   });
 
-  const syncPlanEdits = (items: ManagedAdmin[]) => {
-    setPlanEdits(
+  const syncPlanEdits = (
+    items: ManagedAdmin[],
+    options: { preserveDirty?: boolean } = {}
+  ) => {
+    const { preserveDirty = false } = options;
+    if (!preserveDirty) {
+      dirtyPlanEditIdsRef.current.clear();
+    }
+
+    setPlanEdits((current) =>
       items.reduce<Record<string, PlanDraft>>(
         (acc, admin) => {
-          acc[admin._id] = getPlanForm(admin);
+          acc[admin._id] =
+            preserveDirty && dirtyPlanEditIdsRef.current.has(admin._id)
+              ? current[admin._id] || getPlanForm(admin)
+              : getPlanForm(admin);
           return acc;
         },
         {}
@@ -285,13 +299,18 @@ const SuperAdminDashboard: React.FC = () => {
     navigate("/admin/login");
   };
 
-  const loadAdmins = async () => {
+  const loadAdmins = async (
+    options: { silent?: boolean; preservePlanDrafts?: boolean } = {}
+  ) => {
+    const { silent = false, preservePlanDrafts = false } = options;
     if (!token) {
       navigate("/admin/login");
       return;
     }
 
-    setIsLoading(true);
+    if (!silent) {
+      setIsLoading(true);
+    }
     try {
       const profileResponse = await fetch(`${getApiBaseUrl()}/api/admin/me`, {
         headers: authHeaders(),
@@ -328,24 +347,44 @@ const SuperAdminDashboard: React.FC = () => {
 
       const managedAdmins = data.admins || [];
       setAdmins(managedAdmins);
-      syncPlanEdits(managedAdmins);
+      syncPlanEdits(managedAdmins, { preserveDirty: preservePlanDrafts });
     } catch (error: any) {
-      toast({
-        title: "Super admin error",
-        description: error?.message || "Could not load super admin dashboard.",
-        variant: "destructive",
-      });
+      if (!silent) {
+        toast({
+          title: "Super admin error",
+          description: error?.message || "Could not load super admin dashboard.",
+          variant: "destructive",
+        });
+      } else {
+        console.error("Auto-refresh super admin dashboard failed:", error);
+      }
       if (String(error?.message || "").toLowerCase().includes("session")) {
         signOut();
       }
     } finally {
-      setIsLoading(false);
+      if (!silent) {
+        setIsLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     loadAdmins();
   }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState !== "visible" || busyAdminId || isCreating) {
+        return;
+      }
+
+      void loadAdmins({ silent: true, preservePlanDrafts: true });
+    }, AUTO_REFRESH_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [busyAdminId, isCreating, token]);
 
   const createAdmin = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -513,6 +552,7 @@ const SuperAdminDashboard: React.FC = () => {
       setAdmins((prev) =>
         prev.map((item) => (item._id === admin._id ? data.admin : item))
       );
+      dirtyPlanEditIdsRef.current.delete(admin._id);
       setPlanEdits((prev) => ({ ...prev, [admin._id]: getPlanForm(data.admin) }));
       toast({
         title: "Plan updated",
@@ -552,6 +592,7 @@ const SuperAdminDashboard: React.FC = () => {
       setAdmins((prev) =>
         prev.map((item) => (item._id === admin._id ? data.admin : item))
       );
+      dirtyPlanEditIdsRef.current.delete(admin._id);
       setPlanEdits((prev) => ({ ...prev, [admin._id]: getPlanForm(data.admin) }));
       toast({
         title: action === "approve" ? "Plan request approved" : "Plan request rejected",
@@ -573,6 +614,7 @@ const SuperAdminDashboard: React.FC = () => {
     key: "name" | "status" | "certificateLimit" | "expiresAt",
     value: string
   ) => {
+    dirtyPlanEditIdsRef.current.add(adminId);
     setPlanEdits((prev) => ({
       ...prev,
       [adminId]: {
@@ -597,6 +639,7 @@ const SuperAdminDashboard: React.FC = () => {
   };
 
   const updateManagedPlanName = (admin: ManagedAdmin, planName: string) => {
+    dirtyPlanEditIdsRef.current.add(admin._id);
     setPlanEdits((prev) => {
       const current = prev[admin._id] || getPlanForm(admin);
       return {

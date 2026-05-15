@@ -179,6 +179,8 @@ const institutionStatusClass = (status = "unverified") => {
   return "text-muted-foreground";
 };
 
+const AUTO_REFRESH_INTERVAL_MS = 15000;
+
 const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [certificates, setCertificates] = useState<Certificate[]>([]);
@@ -287,6 +289,41 @@ const AdminDashboard: React.FC = () => {
     fetchCertificates({ authToken: token, pageToLoad: 1 });
   }, [navigate, token]);
 
+  useEffect(() => {
+    if (!token) return;
+
+    const intervalId = window.setInterval(() => {
+      if (
+        document.visibilityState !== "visible" ||
+        savingEditId ||
+        revokingId ||
+        resendingId
+      ) {
+        return;
+      }
+
+      void fetchAdminProfile(token);
+      void fetchStats(token, { silent: true });
+      void fetchCertificates({
+        authToken: token,
+        pageToLoad: page,
+        silent: true,
+      });
+    }, AUTO_REFRESH_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [
+    fromDate,
+    page,
+    resendingId,
+    revokingId,
+    savingEditId,
+    searchQuery,
+    statusFilter,
+    toDate,
+    token,
+  ]);
+
   const authHeaders = (authToken?: string) => ({
     Authorization: `Bearer ${authToken ?? token ?? ""}`,
     "Content-Type": "application/json",
@@ -334,8 +371,14 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  const fetchStats = async (authToken?: string) => {
-    setIsStatsLoading(true);
+  const fetchStats = async (
+    authToken?: string,
+    options: { silent?: boolean } = {}
+  ) => {
+    const { silent = false } = options;
+    if (!silent) {
+      setIsStatsLoading(true);
+    }
     try {
       const res = await fetch(`${getApiBaseUrl()}/api/issue/stats`, {
         headers: authHeaders(authToken),
@@ -349,9 +392,13 @@ const AdminDashboard: React.FC = () => {
       setStats(payload.stats ?? emptyStats);
     } catch (err) {
       console.error("Stats load error:", err);
-      setStats(emptyStats);
+      if (!silent) {
+        setStats(emptyStats);
+      }
     } finally {
-      setIsStatsLoading(false);
+      if (!silent) {
+        setIsStatsLoading(false);
+      }
     }
   };
 
@@ -372,12 +419,16 @@ const AdminDashboard: React.FC = () => {
   const fetchCertificates = async ({
     authToken,
     pageToLoad = page,
+    silent = false,
   }: {
     authToken?: string;
     pageToLoad?: number;
+    silent?: boolean;
   } = {}) => {
-    setIsLoading(true);
-    setLoadError(null);
+    if (!silent) {
+      setIsLoading(true);
+      setLoadError(null);
+    }
 
     try {
       const res = await fetch(
@@ -396,20 +447,25 @@ const AdminDashboard: React.FC = () => {
       setPage(payload.page || pageToLoad);
     } catch (err) {
       console.error("Error fetching certificates:", err);
-      setCertificates([]);
-      setLoadError("Could not load certificate data. Please refresh and try again.");
-      toast({
-        title: "Failed to load certificates",
-        description: "Only live certificate data is shown.",
-        variant: "destructive",
-      });
+      if (!silent) {
+        setCertificates([]);
+        setLoadError("Could not load certificate data. Please refresh and try again.");
+        toast({
+          title: "Failed to load certificates",
+          description: "Only live certificate data is shown.",
+          variant: "destructive",
+        });
+      }
     } finally {
-      setIsLoading(false);
+      if (!silent) {
+        setIsLoading(false);
+      }
     }
   };
 
   const refreshDashboard = async () => {
     await Promise.all([
+      token ? fetchAdminProfile(token) : Promise.resolve(),
       fetchStats(),
       fetchCertificates({ pageToLoad: page }),
     ]);
