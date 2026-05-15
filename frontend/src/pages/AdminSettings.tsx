@@ -45,6 +45,7 @@ import {
 } from "@/utils/adminSettings";
 import { getApiBaseUrl } from "@/utils/api";
 import { openDataUrlPreview } from "@/utils/dataUrlPreview";
+import { cn } from "@/lib/utils";
 
 interface AdminBranding {
   instituteName: string;
@@ -227,6 +228,10 @@ const AdminSettings: React.FC = () => {
   const planLimitRepeatIntervalRef = useRef<number | null>(null);
   const institutionStatus =
     profile.institutionVerification?.status || defaultInstitutionVerification.status;
+  const isInstitutionPending = institutionStatus === "pending";
+  const isInstitutionVerified = institutionStatus === "verified";
+  const isInstitutionSuspended = institutionStatus === "suspended";
+  const isVerifiedInstitutionEdit = isInstitutionVerified && isEditingInstitution;
   const isTrialPlan = profile.plan?.name === "trial";
   const canAccessInstitutionBranding = !isTrialPlan;
   const hasRequiredInstitutionDocuments = requiredInstitutionDocumentTypes.every((type) =>
@@ -239,8 +244,16 @@ const AdminSettings: React.FC = () => {
     !isSavingProfile &&
     Boolean(profile.branding.instituteName.trim()) &&
     hasRequiredInstitutionDocuments &&
-    institutionStatus !== "pending" &&
-    institutionStatus !== "verified";
+    !isInstitutionPending &&
+    !isInstitutionSuspended &&
+    (!isInstitutionVerified || isEditingInstitution);
+  const institutionApprovalLabel = isInstitutionPending
+    ? "Pending"
+    : isVerifiedInstitutionEdit
+      ? "Send for approval"
+      : isInstitutionVerified
+        ? "Approved"
+        : "Approval";
   const planRequestStatus = profile.planUpgradeRequest?.status || "none";
   const planLimit = Number(profile.plan?.certificateLimit ?? 5);
   const planRemaining = Number(profile.plan?.remaining ?? 0);
@@ -608,6 +621,19 @@ const AdminSettings: React.FC = () => {
           ? [...remaining, nextDocument]
           : remaining,
       };
+    });
+  };
+
+  const clearInstitutionDocument = (type: InstitutionDocument["type"]) => {
+    if (!canAccessInstitutionBranding || institutionStatus === "suspended") {
+      return;
+    }
+
+    setIsEditingInstitution(true);
+    updateInstitutionDocument(type);
+    toast({
+      title: "Proof document cleared",
+      description: "Click Save Account Settings to keep this change.",
     });
   };
 
@@ -1224,11 +1250,17 @@ const AdminSettings: React.FC = () => {
                   type="button"
                   variant="secondary"
                   size="sm"
-                  disabled={
-                    !canRequestInstitutionApproval ||
-                    institutionStatus === "pending" ||
-                    institutionStatus === "verified"
-                  }
+                  disabled={!canRequestInstitutionApproval}
+                  className={cn(
+                    "font-semibold",
+                    isInstitutionVerified &&
+                      !isEditingInstitution &&
+                      "border border-emerald-300 bg-emerald-500 text-emerald-950 shadow-sm hover:bg-emerald-500 disabled:opacity-100",
+                    isVerifiedInstitutionEdit &&
+                      "border border-amber-300 bg-amber-400 text-amber-950 shadow-sm hover:bg-amber-300",
+                    isInstitutionPending &&
+                      "border border-sky-300 bg-sky-500 text-sky-950 shadow-sm hover:bg-sky-500 disabled:opacity-100"
+                  )}
                   onClick={() => saveProfile({ requestInstitutionApproval: true })}
                 >
                   {isSavingProfile ? (
@@ -1236,11 +1268,7 @@ const AdminSettings: React.FC = () => {
                   ) : (
                     <Shield className="h-4 w-4" />
                   )}
-                  {institutionStatus === "verified"
-                    ? "Approved"
-                    : institutionStatus === "pending"
-                      ? "Pending"
-                      : "Approval"}
+                  {institutionApprovalLabel}
                 </Button>
                 {isEditingInstitution ? (
                   <Button
@@ -1257,7 +1285,7 @@ const AdminSettings: React.FC = () => {
                     variant="outline"
                     size="sm"
                     className="bg-card/80"
-                    disabled={institutionStatus === "suspended"}
+                    disabled={isInstitutionSuspended}
                     onClick={() => setIsEditingInstitution(true)}
                   >
                     <PenLine className="h-4 w-4" />
@@ -1390,10 +1418,15 @@ const AdminSettings: React.FC = () => {
                         (item) => item.type === "registration_certificate"
                       )}
                       disabled={institutionFieldsDisabled}
+                      clearDisabled={
+                        !canAccessInstitutionBranding ||
+                        institutionStatus === "suspended" ||
+                        isSavingProfile
+                      }
                       onFile={(file) =>
                         handleInstitutionDocumentUpload("registration_certificate", file)
                       }
-                      onClear={() => updateInstitutionDocument("registration_certificate")}
+                      onClear={() => clearInstitutionDocument("registration_certificate")}
                     />
                     <InstitutionDocumentPicker
                       title="Authorization letter"
@@ -1401,10 +1434,15 @@ const AdminSettings: React.FC = () => {
                         (item) => item.type === "authorization_letter"
                       )}
                       disabled={institutionFieldsDisabled}
+                      clearDisabled={
+                        !canAccessInstitutionBranding ||
+                        institutionStatus === "suspended" ||
+                        isSavingProfile
+                      }
                       onFile={(file) =>
                         handleInstitutionDocumentUpload("authorization_letter", file)
                       }
-                      onClear={() => updateInstitutionDocument("authorization_letter")}
+                      onClear={() => clearInstitutionDocument("authorization_letter")}
                     />
                   </div>
                   {!hasRequiredInstitutionDocuments && (
@@ -1784,6 +1822,7 @@ interface InstitutionDocumentPickerProps {
   title: string;
   document?: InstitutionDocument;
   disabled?: boolean;
+  clearDisabled?: boolean;
   onFile: (file?: File) => void;
   onClear: () => void;
 }
@@ -1792,6 +1831,7 @@ const InstitutionDocumentPicker: React.FC<InstitutionDocumentPickerProps> = ({
   title,
   document,
   disabled = false,
+  clearDisabled = disabled,
   onFile,
   onClear,
 }) => {
@@ -1808,8 +1848,8 @@ const InstitutionDocumentPicker: React.FC<InstitutionDocumentPickerProps> = ({
           <button
             type="button"
             onClick={onClear}
-            disabled={disabled}
-            className="text-xs font-semibold text-muted-foreground transition-colors hover:text-destructive"
+            disabled={clearDisabled}
+            className="text-xs font-semibold text-muted-foreground transition-colors hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
           >
             Clear
           </button>
