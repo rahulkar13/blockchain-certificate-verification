@@ -51,6 +51,7 @@ import {
 import { toast } from "@/hooks/use-toast";
 import { getApiBaseUrl } from "@/utils/api";
 import { openDataUrlPreview } from "@/utils/dataUrlPreview";
+import { saveAdminUserSession } from "@/utils/adminSession";
 
 interface ManagedAdmin {
   _id: string;
@@ -326,15 +327,12 @@ const SuperAdminDashboard: React.FC = () => {
         return;
       }
 
-      localStorage.setItem(
-        "adminUser",
-        JSON.stringify({
-          name: profile.name,
-          email: profile.email,
-          role: profile.role,
-          status: profile.status,
-        })
-      );
+      saveAdminUserSession({
+        name: profile.name,
+        email: profile.email,
+        role: profile.role,
+        status: profile.status,
+      });
 
       const response = await fetch(`${getApiBaseUrl()}/api/admin/super/admins`, {
         headers: authHeaders(),

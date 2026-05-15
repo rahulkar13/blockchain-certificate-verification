@@ -69,6 +69,7 @@ import { generateFileHash } from "@/utils/hash";
 import { generateCertificatePDF } from "@/utils/pdfGenerator";
 import { uploadFileToPinata, uploadMetadataToPinata } from "@/utils/pinata";
 import { isDateAfter, isDateOnOrBefore, parseDateOnly, toDateOnlyString } from "@/utils/dateOnly";
+import { ADMIN_USER_REFRESH_EVENT, saveAdminUserSession } from "@/utils/adminSession";
 
 interface Certificate {
   certificateId: string;
@@ -302,7 +303,6 @@ const AdminDashboard: React.FC = () => {
         return;
       }
 
-      void fetchAdminProfile(token);
       void fetchStats(token, { silent: true });
       void fetchCertificates({
         authToken: token,
@@ -323,6 +323,28 @@ const AdminDashboard: React.FC = () => {
     toDate,
     token,
   ]);
+
+  useEffect(() => {
+    const syncAdminUser = (event: Event) => {
+      const refreshedUser = (event as CustomEvent).detail;
+      if (refreshedUser) {
+        setAdminUser(refreshedUser);
+        return;
+      }
+
+      try {
+        const savedUser = localStorage.getItem("adminUser");
+        if (savedUser) {
+          setAdminUser(JSON.parse(savedUser));
+        }
+      } catch {
+        localStorage.removeItem("adminUser");
+      }
+    };
+
+    window.addEventListener(ADMIN_USER_REFRESH_EVENT, syncAdminUser);
+    return () => window.removeEventListener(ADMIN_USER_REFRESH_EVENT, syncAdminUser);
+  }, []);
 
   const authHeaders = (authToken?: string) => ({
     Authorization: `Bearer ${authToken ?? token ?? ""}`,
@@ -364,7 +386,7 @@ const AdminDashboard: React.FC = () => {
           },
         };
         setAdminUser(user);
-        localStorage.setItem("adminUser", JSON.stringify(user));
+        saveAdminUserSession(user);
       }
     } catch (err) {
       console.error("fetchAdminProfile error:", err);

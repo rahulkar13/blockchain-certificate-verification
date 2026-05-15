@@ -7,13 +7,14 @@ import {
   Shield,
   Sparkles,
 } from "lucide-react";
+import { ADMIN_USER_REFRESH_EVENT } from "@/utils/adminSession";
 
 const Footer = () => {
   const location = useLocation();
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [adminRole, setAdminRole] = useState("admin");
 
-  useEffect(() => {
+  const syncAdminFooterState = () => {
     setIsAdminLoggedIn(Boolean(localStorage.getItem("adminToken")));
 
     try {
@@ -22,7 +23,16 @@ const Footer = () => {
     } catch {
       setAdminRole("admin");
     }
+  };
+
+  useEffect(() => {
+    syncAdminFooterState();
   }, [location]);
+
+  useEffect(() => {
+    window.addEventListener(ADMIN_USER_REFRESH_EVENT, syncAdminFooterState);
+    return () => window.removeEventListener(ADMIN_USER_REFRESH_EVENT, syncAdminFooterState);
+  }, []);
 
   const dashboardPath =
     adminRole === "super_admin" ? "/super-admin/dashboard" : "/admin/dashboard";

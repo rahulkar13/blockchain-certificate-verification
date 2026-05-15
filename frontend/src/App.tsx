@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { DragEvent, ReactNode } from "react";
+import { useEffect, type DragEvent, type ReactNode } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
@@ -16,10 +16,13 @@ import AdminSettings from "./pages/AdminSettings";
 import AdminAuditTrail from "./pages/AdminAuditTrail";
 import PublicCertificate from "./pages/PublicCertificate";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
+import { getApiBaseUrl } from "./utils/api";
+import { clearAdminSession, saveAdminUserSession } from "./utils/adminSession";
 
 const queryClient = new QueryClient();
 const APP_CLIENT_VERSION = "2026-05-14-admin-verify-v2";
 const APP_CLIENT_VERSION_KEY = "blockcert-client-version";
+const GLOBAL_AUTO_REFRESH_INTERVAL_MS = 15000;
 
 const resetStaleClientState = () => {
   if (typeof window === "undefined") return;
@@ -50,6 +53,78 @@ const RequireAdminLogin = ({ children }: { children: ReactNode }) => {
   }
 
   return <>{children}</>;
+};
+
+const buildAdminSession = (data: any) => ({
+  _id: data._id,
+  name: data.name || "Admin",
+  email: data.email || "",
+  walletAddress: data.walletAddress || "",
+  role: data.role || "admin",
+  status: data.status || "active",
+  plan: data.plan,
+  planUpgradeRequest: data.planUpgradeRequest || { status: "none" },
+  branding: data.branding || {},
+  institutionVerification: data.institutionVerification || {
+    status: "unverified",
+    locked: false,
+  },
+});
+
+const GlobalAutoRefresh = () => {
+  const location = useLocation();
+
+  useEffect(() => {
+    const token = localStorage.getItem("adminToken");
+    if (!token || location.pathname === "/admin/login") return;
+
+    let cancelled = false;
+
+    const refreshAdminSession = async () => {
+      if (document.visibilityState !== "visible") return;
+
+      try {
+        const response = await fetch(`${getApiBaseUrl()}/api/admin/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (response.status === 401) {
+          clearAdminSession();
+          return;
+        }
+
+        if (!response.ok) return;
+
+        const data = await response.json();
+        if (!cancelled) {
+          saveAdminUserSession(buildAdminSession(data));
+        }
+      } catch {
+        return;
+      }
+    };
+
+    void refreshAdminSession();
+    const intervalId = window.setInterval(
+      refreshAdminSession,
+      GLOBAL_AUTO_REFRESH_INTERVAL_MS
+    );
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") {
+        void refreshAdminSession();
+      }
+    };
+
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [location.pathname]);
+
+  return null;
 };
 
 const isLinkOrButtonDrag = (target: EventTarget | null) => {
@@ -99,6 +174,7 @@ const App = () => (
           onDragOverCapture={preventAccidentalUrlDrop}
           onDropCapture={preventAccidentalUrlDrop}
         >
+          <GlobalAutoRefresh />
           <Navbar />
 
           <Routes>

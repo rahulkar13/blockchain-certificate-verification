@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { getApiBaseUrl } from "@/utils/api";
+import { saveAdminUserSession } from "@/utils/adminSession";
 
 const AdminLogin = () => {
   const navigate = useNavigate();
@@ -94,24 +95,21 @@ const AdminLogin = () => {
 
   const storeAdminSession = (data: any) => {
     localStorage.setItem("adminToken", data.token);
-    localStorage.setItem(
-      "adminUser",
-      JSON.stringify({
-        _id: data._id,
-        name: data.name,
-        email: data.email,
-        walletAddress: data.walletAddress || "",
-        role: data.role || "admin",
-        status: data.status || "active",
-        plan: data.plan,
-        planUpgradeRequest: data.planUpgradeRequest || { status: "none" },
-        branding: data.branding || {},
-        institutionVerification: data.institutionVerification || {
-          status: "unverified",
-          locked: false,
-        },
-      })
-    );
+    saveAdminUserSession({
+      _id: data._id,
+      name: data.name,
+      email: data.email,
+      walletAddress: data.walletAddress || "",
+      role: data.role || "admin",
+      status: data.status || "active",
+      plan: data.plan,
+      planUpgradeRequest: data.planUpgradeRequest || { status: "none" },
+      branding: data.branding || {},
+      institutionVerification: data.institutionVerification || {
+        status: "unverified",
+        locked: false,
+      },
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

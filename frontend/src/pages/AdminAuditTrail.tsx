@@ -57,6 +57,8 @@ const formatDateButtonLabel = (value: string, fallback: string) => {
   return date ? format(date, "dd MMM yyyy") : fallback;
 };
 
+const AUTO_REFRESH_INTERVAL_MS = 15000;
+
 const AdminAuditTrail: React.FC = () => {
   const navigate = useNavigate();
   const token = useMemo(() => localStorage.getItem("adminToken"), []);
@@ -81,6 +83,24 @@ const AdminAuditTrail: React.FC = () => {
     fetchLogs(1, token);
   }, [navigate, token]);
 
+  useEffect(() => {
+    if (!token) return;
+
+    const intervalId = window.setInterval(() => {
+      const activeElement = document.activeElement;
+      const isEditingFilter =
+        activeElement instanceof HTMLInputElement ||
+        activeElement instanceof HTMLTextAreaElement ||
+        datePickerOpen !== null;
+
+      if (document.visibilityState === "visible" && !isEditingFilter) {
+        void fetchLogs(page, token, { silent: true });
+      }
+    }, AUTO_REFRESH_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [datePickerOpen, fromDate, page, search, toDate, token]);
+
   const authHeaders = (authToken?: string) => ({
     Authorization: `Bearer ${authToken ?? token ?? ""}`,
   });
@@ -96,8 +116,15 @@ const AdminAuditTrail: React.FC = () => {
     return params.toString();
   };
 
-  const fetchLogs = async (pageToLoad = page, authToken?: string) => {
-    setIsLoading(true);
+  const fetchLogs = async (
+    pageToLoad = page,
+    authToken?: string,
+    options: { silent?: boolean } = {}
+  ) => {
+    const { silent = false } = options;
+    if (!silent) {
+      setIsLoading(true);
+    }
     try {
       const response = await fetch(
         `${getApiBaseUrl()}/api/issue/activity/logs?${buildQuery(pageToLoad)}`,
@@ -117,14 +144,18 @@ const AdminAuditTrail: React.FC = () => {
       setTotalPages(payload.totalPages || 1);
       setTotal(payload.total || 0);
     } catch (error: any) {
-      toast({
-        title: "Audit trail failed",
-        description: error?.message || "Please try again.",
-        variant: "destructive",
-      });
-      setLogs([]);
+      if (!silent) {
+        toast({
+          title: "Audit trail failed",
+          description: error?.message || "Please try again.",
+          variant: "destructive",
+        });
+        setLogs([]);
+      }
     } finally {
-      setIsLoading(false);
+      if (!silent) {
+        setIsLoading(false);
+      }
     }
   };
 

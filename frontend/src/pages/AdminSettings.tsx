@@ -46,6 +46,7 @@ import {
 import { getApiBaseUrl } from "@/utils/api";
 import { openDataUrlPreview } from "@/utils/dataUrlPreview";
 import { cn } from "@/lib/utils";
+import { saveAdminUserSession } from "@/utils/adminSession";
 
 interface AdminBranding {
   instituteName: string;
@@ -206,6 +207,7 @@ const AdminSettings: React.FC = () => {
   const [preferences, setPreferences] = useState<AdminPreferences>(loadAdminPreferences);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [hasUnsavedProfileChanges, setHasUnsavedProfileChanges] = useState(false);
   const [isEditingInstitution, setIsEditingInstitution] = useState(false);
   const [isRequestingPlan, setIsRequestingPlan] = useState(false);
   const [planRequestForm, setPlanRequestForm] = useState({
@@ -228,6 +230,7 @@ const AdminSettings: React.FC = () => {
   });
   const planLimitRepeatDelayRef = useRef<number | null>(null);
   const planLimitRepeatIntervalRef = useRef<number | null>(null);
+  const hasUnsavedProfileChangesRef = useRef(false);
   const institutionStatus =
     profile.institutionVerification?.status || defaultInstitutionVerification.status;
   const isInstitutionPending = institutionStatus === "pending";
@@ -278,6 +281,11 @@ const AdminSettings: React.FC = () => {
     planLimit > 0 ? Math.min(Math.round((planUsed / planLimit) * 100), 100) : 0;
   const isCustomPlanRequest = planRequestForm.planName === "custom";
 
+  const setProfileDirty = (isDirty: boolean) => {
+    hasUnsavedProfileChangesRef.current = isDirty;
+    setHasUnsavedProfileChanges(isDirty);
+  };
+
   useEffect(() => {
     if (!token) {
       toast({
@@ -295,6 +303,7 @@ const AdminSettings: React.FC = () => {
   useEffect(() => {
     if (
       !token ||
+      hasUnsavedProfileChanges ||
       isEditingInstitution ||
       isSavingProfile ||
       isRequestingPlan ||
@@ -317,6 +326,7 @@ const AdminSettings: React.FC = () => {
     isResettingPassword,
     isSavingProfile,
     isSendingReset,
+    hasUnsavedProfileChanges,
     token,
   ]);
 
@@ -381,7 +391,11 @@ const AdminSettings: React.FC = () => {
         },
         createdAt: data.createdAt,
       };
+      if (silent && hasUnsavedProfileChangesRef.current) {
+        return;
+      }
       setProfile(nextProfile);
+      setProfileDirty(false);
       if (!silent && nextProfile.planUpgradeRequest?.requestedPlan?.name) {
         setPlanRequestForm({
           planName: nextProfile.planUpgradeRequest.requestedPlan.name,
@@ -398,7 +412,7 @@ const AdminSettings: React.FC = () => {
             nextProfile.planUpgradeRequest.payment?.proofDataUrl || "",
         });
       }
-      localStorage.setItem("adminUser", JSON.stringify(nextProfile));
+      saveAdminUserSession(nextProfile);
     } catch (error: any) {
       if (!silent) {
         toast({
@@ -486,8 +500,9 @@ const AdminSettings: React.FC = () => {
         createdAt: data.createdAt || profile.createdAt,
       };
       setProfile(nextProfile);
+      setProfileDirty(false);
       setIsEditingInstitution(false);
-      localStorage.setItem("adminUser", JSON.stringify(nextProfile));
+      saveAdminUserSession(nextProfile);
       toast({
         title: "Settings updated",
         description:
@@ -607,7 +622,7 @@ const AdminSettings: React.FC = () => {
         },
       };
       setProfile(nextProfile);
-      localStorage.setItem("adminUser", JSON.stringify(nextProfile));
+      saveAdminUserSession(nextProfile);
       toast({
         title: "Plan request sent",
         description: "Super admin can now approve or reject your selected plan.",
@@ -627,6 +642,7 @@ const AdminSettings: React.FC = () => {
     key: K,
     value: AdminBranding[K]
   ) => {
+    setProfileDirty(true);
     setProfile((current) => ({
       ...current,
       branding: { ...current.branding, [key]: value },
@@ -665,6 +681,7 @@ const AdminSettings: React.FC = () => {
     type: InstitutionDocument["type"],
     nextDocument?: InstitutionDocument
   ) => {
+    setProfileDirty(true);
     setProfile((current) => {
       const remaining = current.institutionDocuments.filter(
         (document) => document.type !== type
@@ -928,9 +945,10 @@ const AdminSettings: React.FC = () => {
                 <Input
                   id="admin-name"
                   value={profile.name}
-                  onChange={(event) =>
-                    setProfile((current) => ({ ...current, name: event.target.value }))
-                  }
+                  onChange={(event) => {
+                    setProfileDirty(true);
+                    setProfile((current) => ({ ...current, name: event.target.value }));
+                  }}
                   placeholder="Enter admin name"
                 />
               </div>
